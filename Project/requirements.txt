@@ -1,0 +1,28 @@
+# --- Core AI & Fine-Tuning (Kaggle Environment) ---
+torch>=2.0.0
+transformers>=4.30.0    # For LLM loading and inference [cite: 9]
+peft>=0.4.0             # Parameter-Efficient Fine-Tuning (LoRA/QLoRA) [cite: 25, 42]
+bitsandbytes>=0.40.0    # 4-bit NormalFloat quantization for QLoRA [cite: 25, 57]
+accelerate>=0.21.0      # For efficient model scaling (1B, 3B, 7B) [cite: 42]
+datasets>=2.12.0        # To load SQuAD, SciQ, and RACE [cite: 28, 30]
+
+# --- RAG & Vector Database (Local Backend) ---
+langchain>=0.0.267      # RAG pipeline orchestration [cite: 11, 23]
+sentence-transformers   # For generating semantic embeddings [cite: 10]
+faiss-cpu>=1.7.4        # Local vector database for semantic search [cite: 10, 23]
+pypdf>=3.12.0           # PDF text extraction and segmentation [cite: 10, 19]
+tiktoken                # Token counting for context-preserving chunks [cite: 10]
+
+# --- Web Framework & API (Local Backend) ---
+fastapi>=0.100.0        # High-performance backend API [cite: 21, 56]
+uvicorn>=0.23.0         # ASGI server for FastAPI
+python-multipart        # To handle PDF file uploads
+
+# --- Frontend & UI ---
+streamlit>=1.25.0       # For the interactive tutoring dashboard [cite: 12]
+# If using React instead of Streamlit, these would be in a package.json file
+
+# --- Utilities ---
+pandas                  # For benchmarking and ablation study data 
+scikit-learn            # For evaluation metrics and performance analysis [cite: 61]
+python-dotenv           # To manage local environment variables and privacy
