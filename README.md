@@ -1,42 +1,644 @@
-# Learning Edge: Offline Agentic AI Tutor
+# 🧠 Learning Edge — Offline AI Tutor
 
-An intelligent, fully offline AI tutor application built with **LangGraph**, **Streamlit**, and **Ollama**. The system is designed to provide hyper-personalized academic tutoring without ever sending your data to the cloud.
+> A fully offline, personalized AI tutoring system powered by **LangGraph**, **Ollama**, **ChromaDB**, and a custom multi-tier memory architecture. No cloud. No API keys. Everything runs on your local machine.
 
-By leveraging an embedded vector database (**ChromaDB**) and a structured local Knowledge Graph (**NetworkX**), the tutor can ingest your course materials, textbooks, or syllabus documents to provide accurate, hallucination-free explanations.
+[![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green?logo=fastapi)](https://fastapi.tiangolo.com)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Agentic-orange)](https://langchain-ai.github.io/langgraph/)
+[![Ollama](https://img.shields.io/badge/Ollama-llama3.2-purple)](https://ollama.com)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector_Store-red)](https://www.trychroma.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-## Core Features
+---
 
-- **Agentic Routing System (LangGraph):** The system uses a multi-agent architecture (Supervisor, Researcher, Pedagogue, Assessor, Scribe) to dynamically route user intents between conversational chat, factual research, and interactive assessments.
-- **Hybrid RAG Pipeline:** Documents are embedded locally using `all-MiniLM-L6-v2` and stored in ChromaDB. The system fuses semantic vector search with keyword-based sparse retrieval (BM25) to find exact facts from your uploaded course materials.
-- **Dynamic Personalization Matrix:** The tutor dynamically reshapes its persona across 21 combinations (3 Academic Levels x 7 Teaching Styles). It explicitly tracks your "Mastered Topics" to generate real-world analogies tailored to concepts you already know.
-- **Knowledge Graph Memory:** Instead of linear chat histories, the system tracks conversation branches via a directed graph (NetworkX). It automatically extracts concepts, generates quizzes, and records your passing scores to build a long-term semantic profile.
-- **100% Offline & Private:** Uses `Llama-3.2-3B` via Ollama for all generation tasks, ensuring complete data privacy.
+## 📑 Table of Contents
 
-## Architecture Highlights
+- [Overview](#-overview)
+- [Key Features](#-key-features)
+- [Project Architecture](#-project-architecture)
+- [Agent Architecture](#-agent-architecture-langgraph-pipeline)
+- [Memory System](#-memory-system-multi-tier)
+- [RAG Pipeline](#-rag-pipeline-hybrid-retrieval)
+- [Knowledge Graph](#-educational-knowledge-graph)
+- [Frontend](#-frontend)
+- [API Reference](#-api-reference)
+- [Setup & Installation](#-setup--installation)
+- [Usage](#-usage)
+- [Tech Stack](#-tech-stack)
+- [File Structure](#-file-structure)
 
-1. **`app/agents/orchestrator.py`**: The brain of the tutor. Contains the LangGraph nodes that manage state, route intents (Chat vs. Research vs. Quiz), and inject dynamic style prompts.
-2. **`app/rag/`**: Contains the retrieval and ingestion pipelines. Uses Langchain Ensemble retrievers to merge BM25 and Vector search.
-3. **`app/memory/`**: SQLite and NetworkX hybrid storage that tracks both short-term session state and long-term user profiles (weak topics, completed quizzes).
-4. **`app/ui/`**: A modern Streamlit interface featuring a persistent sidebar for persona switching, chat history rendering, and debug views.
+---
 
-## Installation & Setup
+## 🎯 Overview
+
+**Learning Edge** is an AI-powered offline tutor that ingests curriculum documents (PDF or text), splits them into sequential chapters, and guides students through a personalized learning journey. It uses a **4-agent LangGraph pipeline** to route every user query through memory retrieval, research, explanation, and persistence — all without any internet connection.
+
+The system learns *how you learn* — adapting explanations to your academic level and preferred style, tracking mastered topics on a visual Knowledge Graph, and generating adaptive quizzes to verify understanding before advancing to the next chapter.
+
+---
+
+## ✨ Key Features
+
+| Feature | Description |
+|---|---|
+| 🔌 **100% Offline** | Runs entirely on your local machine using Ollama |
+| 📄 **Curriculum Ingestion** | Upload PDF or paste text — auto-split into sequential chapters |
+| 🤖 **4-Agent Pipeline** | Supervisor → Researcher → Pedagogue → Scribe via LangGraph |
+| 🧬 **Hybrid RAG** | BM25 + ChromaDB vector search ensemble retrieval |
+| 🧠 **Multi-Tier Memory** | Episodic, Semantic, Procedural, and Non-Linear Graph Memory |
+| 📊 **Knowledge Graph** | Interactive PyVis graph tracking mastery and weak areas |
+| 📝 **Adaptive Quizzes** | MCQ quizzes generated by LLM; pass to unlock next chapter |
+| 🎨 **Personalization** | 4 learning styles × 3 academic levels = 12 unique pedagogical personas |
+| 📈 **Progress Dashboard** | Per-subject progress tracking across all your curriculum documents |
+| 🌐 **React + FastAPI UI** | Premium dark-mode React frontend served by FastAPI |
+
+---
+
+## 🏗️ Project Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        FRONTEND (React)                         │
+│  Sidebar │ ChatPage │ QuizPage │ DashboardPage │ GraphPage      │
+│                   served by FastAPI on :8000                    │
+└────────────────────────────┬────────────────────────────────────┘
+                             │  HTTP/SSE (REST + Server-Sent Events)
+┌────────────────────────────▼────────────────────────────────────┐
+│                    FASTAPI BACKEND (backend/main.py)            │
+│                                                                 │
+│  /api/chat ──────────────► LangGraph Pipeline (SSE stream)     │
+│  /api/documents/ingest ──► CurriculumDivider + Explanation     │
+│  /api/sessions ──────────► SQLite Chat Sessions                │
+│  /api/quiz/submit ───────► Quiz Grader + State Advance         │
+│  /api/subjects ──────────► Subject Management                  │
+│  /api/graph ─────────────► PyVis Knowledge Graph HTML          │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+          ┌──────────────────┼───────────────────┐
+          │                  │                   │
+┌─────────▼──────┐  ┌────────▼───────┐  ┌───────▼────────┐
+│  LangGraph     │  │   ChromaDB     │  │   SQLite DB    │
+│  Orchestrator  │  │  (Vector Store)│  │ (user_memory)  │
+│  (4 Agents)    │  │  subject_*     │  │                │
+└─────────┬──────┘  └────────────────┘  └───────┬────────┘
+          │                                      │
+┌─────────▼──────┐                    ┌──────────▼──────────┐
+│  Ollama LLM    │                    │  Tables:            │
+│  llama3.2:3B   │                    │  • subjects         │
+│  tinyllama     │                    │  • chat_sessions    │
+│  (fallback)    │                    │  • chat_history     │
+└────────────────┘                    │  • semantic_memory  │
+                                      │  • quiz_history     │
+                                      │  • curriculum_docs  │
+                                      │  • document_parts   │
+                                      │  • subject_study_   │
+                                      │    state            │
+                                      └─────────────────────┘
+```
+
+---
+
+## 🤖 Agent Architecture (LangGraph Pipeline)
+
+Every user chat message passes through a directed **LangGraph StateGraph** with 4 specialized agents. The pipeline is streamed to the frontend via Server-Sent Events (SSE).
+
+```
+User Query
+    │
+    ▼
+┌───────────────────────────────────────────────────────┐
+│                  LANGGRAPH STATE GRAPH                │
+│                                                       │
+│  ┌─────────────┐                                      │
+│  │ 🚦 SUPERVISOR │ ── Intent Classification           │
+│  │   Node      │    (research / assess / chat)        │
+│  │             │                                      │
+│  │ • Embeds query (SentenceTransformer all-MiniLM)   │
+│  │ • Updates Non-Linear DiGraph Memory               │
+│  │   - COMMIT: extend active thread                  │
+│  │   - CHECKOUT: jump to related older branch        │
+│  │   - MERGE: synthesize 2+ topic branches           │
+│  │ • Calls Router LLM (temp=0, 256 tokens)           │
+│  │ • Heuristic override for quiz/explain keywords    │
+│  └──────┬──────┘                                     │
+│         │                                            │
+│    ┌────▼────────────────────────┐                   │
+│    │     route_post_supervisor   │                   │
+│    └────┬────────────┬───────────┘                   │
+│         │            │                               │
+│    research        assess                            │
+│         │            │                               │
+│  ┌──────▼──────┐  ┌──▼──────────┐                   │
+│  │ 📚 RESEARCHER│  │  ASSESSOR   │                   │
+│  │   Node      │  │   Node      │                   │
+│  │             │  │             │                   │
+│  │ 1. KG Query │  │ • Reads     │                   │
+│  │    Enrichment│  │   active    │                   │
+│  │    (prereqs/ │  │   part from │                   │
+│  │    related)  │  │   SQLite    │                   │
+│  │ 2. Hybrid    │  │ • Generates │                   │
+│  │    Retrieval │  │   MCQ quiz  │                   │
+│  │    BM25 +    │  │   via LLM   │                   │
+│  │    ChromaDB  │  │   (JSON)    │                   │
+│  │    ensemble  │  │ • Returns   │                   │
+│  │ 3. LLM       │  │   quiz to   │                   │
+│  │    Context   │  │   frontend  │                   │
+│  │    Compress  │  └─────────────┘                   │
+│  │    (JSON)    │                                    │
+│  └──────┬───────┘                                    │
+│         │                                            │
+│  ┌──────▼──────────────────────────────────────┐    │
+│  │             🧠 PEDAGOGUE Node                │    │
+│  │                                             │    │
+│  │ • Reads student profile (style + level)     │    │
+│  │ • Applies unified persona prompt:           │    │
+│  │   - Style: default / step-by-step /         │    │
+│  │     concise / detailed                      │    │
+│  │   - Level: Beginner / Intermediate /        │    │
+│  │     Advanced                                │    │
+│  │ • Injects: RAG context + episodic history + │    │
+│  │   active chapter title                      │    │
+│  │ • Calls Tutor LLM (temp=0.7, 1024 tokens)  │    │
+│  │ • Updates semantic memory (weak topics)     │    │
+│  │ • Returns markdown-formatted explanation    │    │
+│  └──────┬───────────────────────────────────────┘   │
+│         │                                           │
+│  ┌──────▼──────┐                                    │
+│  │ ✍️  SCRIBE  │                                    │
+│  │   Node      │                                    │
+│  │             │                                    │
+│  │ • Persists  │                                    │
+│  │   DiGraph   │                                    │
+│  │   Memory to │                                    │
+│  │   SQLite    │                                    │
+│  │ • Saves     │                                    │
+│  │   chat turn │                                    │
+│  │   to history│                                    │
+│  │ • Renames   │                                    │
+│  │   session   │                                    │
+│  │   title via │                                    │
+│  │   LLM       │                                    │
+│  └──────┬───────┘                                   │
+│         │                                           │
+│        END                                          │
+└───────────────────────────────────────────────────────┘
+```
+
+### Agent Routing Logic
+
+```
+supervisor_node
+      │
+      ├─── intent == "research" ──► researcher_node ──► pedagogue_node ──► scribe_node
+      │
+      ├─── intent == "assess"   ──► assessor_node   ──► scribe_node
+      │
+      └─── intent == "chat"     ──► pedagogue_node  ──► scribe_node
+```
+
+---
+
+## 🧠 Memory System (Multi-Tier)
+
+The system uses **4 distinct types of memory**, each stored and retrieved differently:
+
+### 1. 📝 Episodic Memory (Short-Term)
+- **Storage**: SQLite `chat_history` table
+- **Scope**: Per session, per user
+- **Content**: Chronological `(role, content)` message pairs
+- **Usage**: Injected into Pedagogue prompt for conversational continuity
+- **Limit**: Last 50 messages retrieved per session
+
+### 2. 🎯 Semantic Memory (Long-Term Profile)
+- **Storage**: SQLite `semantic_memory` table
+- **Scope**: Per subject, per user
+- **Content**: `preferred_style`, `academic_level`, `weak_topics[]`, `completed_topics[]`
+- **Usage**: Personalizes every explanation via `_get_persona_prompt()`
+- **Updated by**: Quiz results (weak topics), subject advancement (completed topics)
+
+### 3. 📚 Procedural Memory (Curriculum Progression)
+- **Storage**: SQLite `curriculum_documents`, `document_parts`, `subject_study_state` tables
+- **Scope**: Per subject
+- **Content**: Document parts with titles, content, and sequential index; active part pointer
+- **Usage**: Gates RAG retrieval to the current chapter only; drives auto-explanation on session open
+
+### 4. 🌳 Non-Linear Graph Memory (Conversational Context)
+- **Storage**: Serialized `networkx.DiGraph` in SQLite `chat_sessions.graph_memory` (JSON)
+- **Scope**: Per session
+- **Content**: Directed acyclic graph of conversation nodes, each with: topic label, embedding vector, distilled state, timestamp
+- **Operations**:
+
+```
+COMMIT   → Append new node to current HEAD (default — topic continues)
+CHECKOUT → Jump to older branch tip if similarity > 0.7 and > HEAD + 0.2
+MERGE    → Connect 2+ branch tips if both have similarity > 0.5 (synthesis query)
+```
+
+This Git-style memory allows the agent to handle **non-linear conversations** — a student can jump between topics and the system correctly routes context.
+
+---
+
+## 🔍 RAG Pipeline (Hybrid Retrieval)
+
+```
+Document Upload (PDF / TXT)
+         │
+         ▼
+┌─────────────────────────────────────────────────┐
+│              CurriculumDivider                  │
+│                                                 │
+│  1. Parse document (PyMuPDF / TextLoader)       │
+│  2. Detect section headings (regex-based)       │
+│  3. Split into N sequential Parts               │
+│  4. LLM-generated title for each Part           │
+│  5. Save Parts to SQLite (doc_id, part_index,   │
+│     part_title, part_content)                   │
+│  6. Set active_part_index = 1                   │
+└──────────────────┬──────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────┐
+│              ContextualIngestor                 │
+│                                                 │
+│  1. Semantic chunking (500 tokens, 50 overlap)  │
+│  2. LLM Context Enrichment per chunk:           │
+│     "Given the document context, what does     │
+│      this chunk explain?"                       │
+│  3. Embed enriched chunks (BAAI/bge-small-en)  │
+│  4. Store in ChromaDB collection:               │
+│     subject_{subject_id}                        │
+│     metadata: {doc_id, part_index, source}      │
+└──────────────────┬──────────────────────────────┘
+                   │
+       At query time (Researcher Node):
+                   │
+                   ▼
+┌─────────────────────────────────────────────────┐
+│            HybridRAGRetriever                   │
+│                                                 │
+│  1. KG Query Enrichment                         │
+│     → Add prerequisite topics from KG to query │
+│                                                 │
+│  2. Strict Curriculum Filter                    │
+│     → Only retrieve from active doc_id +        │
+│       active part_index                         │
+│                                                 │
+│  3. Hybrid Ensemble Retrieval                   │
+│     ┌────────────┐    ┌────────────────────┐   │
+│     │  ChromaDB  │    │    BM25 Retriever  │   │
+│     │  (Dense    │    │  (Sparse Keyword   │   │
+│     │  Vector)   │    │   Search)          │   │
+│     └─────┬──────┘    └──────┬─────────────┘   │
+│           └────────┬──────────┘                │
+│                    ▼                            │
+│            EnsembleRetriever                    │
+│            (0.5 dense + 0.5 sparse)             │
+│                                                 │
+│  4. LLM Context Compression                     │
+│     → Compress retrieved chunks to minified     │
+│       JSON for token efficiency                 │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## 🕸️ Educational Knowledge Graph
+
+A **NetworkX DiGraph** rendered as an interactive **PyVis** HTML visualization.
+
+- **Nodes**: Topics/concepts from the curriculum
+- **Edges**: Prerequisite relationships (A → B means "A must be understood before B")
+- **Node Colors**:
+  - 🟢 **Green** — Mastered (quiz passed)
+  - 🔴 **Red** — Weak area (quiz failed)
+  - 🔵 **Blue** — In progress (default)
+- **Updated by**: Quiz pass/fail results, curriculum ingestion
+- **Hover**: Shows topic content preview
+- **Accessible at**: `/api/graph` → embedded as iframe in the Graph page
+
+---
+
+## 🌐 Frontend
+
+A **premium dark-mode React SPA** embedded in `frontend/index.html` (self-contained, no build step needed) and served by FastAPI.
+
+### Pages
+
+| Page | Description |
+|---|---|
+| 📊 **Dashboard** | Per-subject progress: parts completed, quiz scores, study state |
+| 📚 **Learn (Chat)** | Main chat interface with streaming LangGraph pipeline visualizer |
+| 📝 **Active Quiz** | MCQ quiz workspace; pass to advance to next chapter |
+| 🕸️ **Knowledge Graph** | Interactive topic mastery graph (PyVis iframe) |
+| 🤖 **Agent Architecture** | Live LangGraph pipeline state visualizer |
+
+### Sidebar Features
+- Subject manager (create, switch, delete subjects)
+- Session history (create, rename, delete chat sessions)
+- Curriculum uploader (PDF drag-and-drop or paste text)
+- Personalization controls (learning style + academic level)
+- Ollama status indicator
+
+### Data Flow on Quiz Pass
+
+```
+Quiz Submitted (all correct)
+        │
+        ▼
+POST /api/quiz/submit
+        │
+        ├─ Grade answers → score/total
+        ├─ Advance active_part_index in SQLite
+        ├─ Update semantic_memory (completed_topics)
+        ├─ Update Knowledge Graph (add mastered topic)
+        ├─ generate_and_insert_part_explanation()
+        │    → LLM generates full intro for next chapter
+        │    → Saved to SQLite chat_history
+        ▼
+Frontend (QuizPage) receives result
+        │
+        ▼
+onQuizPassed() callback
+        │
+        ├─ refreshSessions() → fetches new session list
+        ├─ chatRefreshKey++ → force ChatPage remount
+        └─ navigate to 'learn' → user sees new chapter explanation
+```
+
+---
+
+## 📡 API Reference
+
+### Chat
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/chat` | Streaming SSE chat — runs full LangGraph pipeline |
+
+### Sessions
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/sessions?subject_id=` | List sessions for a subject |
+| `POST` | `/api/sessions` | Create a new session (auto-generates chapter explanation) |
+| `DELETE` | `/api/sessions/{id}` | Delete a session |
+| `PUT` | `/api/sessions/{id}/title` | Rename a session |
+| `GET` | `/api/sessions/{id}/history` | Get chat message history |
+| `GET` | `/api/sessions/{id}/graph_tree` | Get non-linear memory graph nodes/edges |
+
+### Documents
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/documents/upload` | Upload a PDF/TXT file |
+| `POST` | `/api/documents/ingest` | Ingest uploaded file or manual text into curriculum |
+
+### Subjects
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/subjects` | List all subjects |
+| `POST` | `/api/subjects` | Create a new subject |
+| `DELETE` | `/api/subjects/{id}` | Delete subject + all its data |
+| `GET` | `/api/subjects/{id}/study_state` | Get active part index + progress |
+| `POST` | `/api/subjects/{id}/advance` | Manually advance to next chapter |
+| `POST` | `/api/subjects/{id}/explain` | On-demand: generate chapter explanation for active part |
+| `GET` | `/api/subjects/progress` | Progress stats for all subjects |
+
+### Quiz
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/quiz/submit` | Submit quiz answers, grade, and advance state if passed |
+| `GET` | `/api/quiz/history` | Full quiz attempt history |
+
+### System
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/status` | Ollama status + ChromaDB chunk count |
+| `POST` | `/api/status/start_ollama` | Start Ollama server |
+| `GET` | `/api/profile` | Get student profile |
+| `PUT` | `/api/profile` | Update preferred style / academic level |
+| `GET` | `/api/graph` | Knowledge graph PyVis HTML |
+| `GET` | `/api/agent_graph` | Agent pipeline SVG HTML |
+| `GET` | `/api/memory_graph/{session_id}` | D3.js memory graph HTML |
+
+---
+
+## ⚙️ Setup & Installation
 
 ### Prerequisites
-- Python 3.10+
-- [Ollama](https://ollama.com/) installed and running locally
-- Pull the necessary model: `ollama run llama3.2`
 
-### Quick Start
-1. Clone the repository.
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run the application:
-   ```bash
-   streamlit run app.py
-   ```
-4. Upload your course materials (PDFs, Markdown) in the UI or place them in the `data/` directory.
+- Python 3.11+
+- [Ollama](https://ollama.com/download) installed and running
+- Git
 
-## License
-MIT License
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/ADI-KRISH/Learning_Edge.git
+cd Learning_Edge
+```
+
+### 2. Create virtual environment
+
+```bash
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+
+# macOS/Linux
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r REQUIREMENTS.md
+# or using uv (faster):
+uv sync
+```
+
+### 4. Pull Ollama models
+
+```bash
+# Primary model (2GB, recommended)
+ollama pull llama3.2
+
+# Fallback model (637MB, for low-RAM systems)
+ollama pull tinyllama
+```
+
+### 5. Download embedding models (optional — auto-downloads on first run)
+
+```bash
+python download_model.py
+```
+
+### 6. Start the application
+
+```bash
+# Start everything (Ollama + FastAPI backend)
+start_tutor.bat          # Windows
+# or
+python launcher.py
+```
+
+The app will be available at **http://localhost:8000**
+
+---
+
+## 🚀 Usage
+
+### First Time Setup
+
+1. Open **http://localhost:8000**
+2. Click **"+ New Subject"** in the sidebar → name your subject (e.g. "NLP 101")
+3. Upload a curriculum PDF or paste text in the **Upload Curriculum** section
+4. Click **"Ingest"** — the system will:
+   - Split the document into chapters
+   - Build the Knowledge Graph
+   - Generate a full introduction to Chapter 1 in the chat
+5. Start learning! Ask questions, request elaborations, or say **"quiz me"** to test yourself
+
+### Learning Flow
+
+```
+Upload Curriculum → Auto Chapter Split → Chapter 1 Explanation
+        ↓
+Ask Questions (Hybrid RAG answers from current chapter only)
+        ↓
+Say "quiz me" → MCQ Quiz on current topic
+        ↓
+Pass Quiz → Chapter 2 Auto-Unlocked + New Explanation Generated
+        ↓
+Repeat until curriculum complete 🎉
+```
+
+### Personalization
+
+Set your learning style and academic level in the **Sidebar → Personalization**:
+
+| Style | Description |
+|---|---|
+| `default` | Balanced, clear explanations |
+| `step-by-step` | Numbered procedural breakdowns |
+| `concise` | Dense, direct, no fluff |
+| `detailed` | Exhaustive coverage of every nuance |
+
+| Level | Description |
+|---|---|
+| `Beginner` | Simple everyday language, no jargon |
+| `Intermediate` | Standard academic language, definitions in context |
+| `Advanced` | Technical jargon, deep theory, edge cases |
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **LLM** | Ollama (llama3.2:3B, tinyllama fallback) |
+| **Agent Framework** | LangGraph (StateGraph DAG) |
+| **LLM Client** | LlamaIndex (Ollama integration) |
+| **Embeddings** | `BAAI/bge-small-en` via HuggingFace |
+| **Vector DB** | ChromaDB (PersistentClient) |
+| **Keyword Search** | BM25Retriever (LangChain Community) |
+| **Graph Memory** | NetworkX DiGraph |
+| **Knowledge Graph** | PyVis (interactive HTML) |
+| **Relational Memory** | SQLite (via Python sqlite3) |
+| **Backend API** | FastAPI + Uvicorn |
+| **SSE Streaming** | FastAPI StreamingResponse |
+| **Document Loading** | PyMuPDF, LangChain TextLoader |
+| **Frontend** | React (CDN, self-contained), Vanilla CSS |
+| **Markdown Render** | react-markdown + remark-gfm |
+| **Env Manager** | uv (pyproject.toml) |
+| **Sentence Embedder** | SentenceTransformers (all-MiniLM-L6-v2) |
+
+---
+
+## 📁 File Structure
+
+```
+Learning_Edge/
+│
+├── backend/
+│   └── main.py                    # FastAPI app, all API routes, SSE streaming
+│
+├── app/
+│   ├── agents/
+│   │   └── orchestrator.py        # LangGraph pipeline: all 4 agent nodes + routing
+│   │
+│   ├── rag/
+│   │   ├── ingestion.py           # ContextualIngestor: semantic chunking + LLM enrichment
+│   │   └── retrieval.py           # HybridRAGRetriever: BM25 + ChromaDB ensemble
+│   │
+│   ├── memory/
+│   │   └── user_memory.py         # UserMemory: SQLite CRUD for all 8 memory tables
+│   │
+│   ├── graph/
+│   │   ├── knowledge_graph.py     # EducationalKnowledgeGraph: NetworkX + PyVis rendering
+│   │   └── knowledge_graph.json   # Persisted graph state
+│   │
+│   └── utils/
+│       ├── config.py              # LLM model, paths, chunk settings
+│       ├── curriculum_divider.py  # CurriculumDivider: doc → parts → SQLite + ChromaDB
+│       ├── ollama_helper.py       # Ollama process management
+│       └── reset_db.py            # DB reset utility
+│
+├── frontend/
+│   ├── index.html                 # Self-contained React SPA (CDN, no build needed)
+│   ├── src/                       # Vite source (for development rebuilds)
+│   │   ├── App.jsx
+│   │   ├── api.js
+│   │   └── components/
+│   │       ├── Sidebar.jsx
+│   │       ├── ChatPage.jsx
+│   │       ├── QuizPage.jsx
+│   │       ├── DashboardPage.jsx
+│   │       ├── GraphPage.jsx
+│   │       ├── AgentPage.jsx
+│   │       └── Markdown.jsx
+│   └── vite.config.js
+│
+├── curriculum_samples/            # Example curriculum text files for testing
+├── data/                          # Uploaded document storage
+├── vector_db_v2/                  # ChromaDB persistent storage
+├── app/memory/user_memory.db      # SQLite database
+├── models/                        # Locally cached embedding models
+│
+├── app.py                         # Legacy Streamlit interface (optional)
+├── launcher.py                    # Combined launcher (Ollama + FastAPI)
+├── start_tutor.bat                # Windows one-click launcher
+├── download_model.py              # Pre-download embedding models
+├── pyproject.toml                 # uv/pip dependencies
+└── README.md
+```
+
+---
+
+## 📊 Evaluation
+
+The system was evaluated across **4 personalization styles** × **3 academic levels** × **3 curriculum parts** using automated test sessions. Results logged in `evaluation_personalization_test.log`.
+
+**Findings:**
+- ✅ `step-by-step` — Highest structural clarity, well-formatted numbered outputs
+- ✅ `concise` — Fastest responses, good factual density
+- ✅ `detailed` — Most comprehensive explanations
+- ✅ `default` — Best all-around for general use
+- ❌ `visual`, `analogy-based`, `example-heavy` — Removed: produced inconsistent or off-topic outputs with local small models
+
+---
+
+## 🤝 Contributing
+
+Pull requests are welcome! For major changes, please open an issue first.
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+  <strong>Built with ❤️ for offline, private, personalized learning</strong><br/>
+  <sub>No cloud. No tracking. No API keys. Just you and your AI tutor.</sub>
+</div>
