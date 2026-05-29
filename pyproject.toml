@@ -1,0 +1,38 @@
+[project]
+name = "offline-ai-tutor"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "chromadb>=1.5.9",
+    "docx2txt>=0.9",
+    "langgraph>=1.2.0",
+    "llama-index>=0.14.22",
+    "llama-index-embeddings-huggingface>=0.7.0",
+    "llama-index-llms-ollama>=0.10.1",
+    "llama-index-retrievers-bm25>=0.7.1",
+    "llama-index-vector-stores-chroma>=0.5.5",
+    "networkx>=3.4.2",
+    "pypdf>=6.11.0",
+    "pyvis>=0.3.2",
+    "llama-index-readers-file>=0.4.0",
+    "pymupdf>=1.25.0",
+    "sentence-transformers>=5.5.0",
+    "streamlit>=1.57.0",
+    "torch>=2.5.0",
+    "reportlab>=4.5.1",
+    "rouge-score>=0.1.2",
+    "psutil>=5.9.0",
+    "fastapi>=0.136.3",
+    "uvicorn[standard]>=0.47.0",
+    "python-multipart>=0.0.28",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu121" }
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true

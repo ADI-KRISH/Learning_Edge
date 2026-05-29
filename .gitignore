@@ -1,0 +1,97 @@
+# ==========================================
+# 1. Python System & Caches
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ==========================================
+# 2. Virtual Environments & Local Dependencies
+# ==========================================
+.venv/
+venv/
+ENV/
+env/
+.env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================================
+# 3. LLM Models & Large Binary Assets
+# ==========================================
+# Exclude actual model folders/binaries (e.g. bge-small-en or gguf downloads)
+models/
+*.gguf
+*.bin
+*.pt
+*.onnx
+
+# NOTE: Do NOT ignore switch_model.py, download_model.py, or launcher.py!
+# They are committed so other developers can run them to fetch the models.
+
+# ==========================================
+# 4. Databases & Storage Layers
+# ==========================================
+# Exclude active local Vector Database
+vector_db/
+.chroma/
+
+# Exclude local user session tracking SQLite databases
+*.db
+*.sqlite3
+app/memory/user_memory.db
+
+# ==========================================
+# 5. Logs & Temporary Output
+# ==========================================
+*.log
+streamlit_err.log
+streamlit_out.log
+streamlit_debug.log
+retrieval_log.txt
+retrieved_context.txt
+run_output.log
+crash_log.txt
+debug_server.log
+
+# ==========================================
+# 6. Streamlit & IDE Configuration
+# ==========================================
+.streamlit/secrets.toml
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# ==========================================
+# 7. Local Project Assets
+# ==========================================
+vector_db_v2/
+data/
+user_profiles/
+scratch/
+*.html

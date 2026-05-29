@@ -1,0 +1,18 @@
+[server]
+# Disable file watcher to prevent Streamlit from crashing when writing logs (retrieval_log.txt) 
+# and databases (ChromaDB/SQLite) on Windows due to file locking issues.
+fileWatcherType = "none"
+
+# Default to port 8501
+port = 8501
+
+# Run in headless mode - prevents Streamlit from auto-opening a browser tab.
+# Without this, Streamlit opens a browser, and if that session disconnects
+# (stale tabs, websocket drops), the server shuts itself down.
+headless = true
+
+# Don't auto-rerun on file save (file watcher is already disabled, but belt-and-suspenders)
+runOnSave = false
+
+[browser]
+gatherUsageStats = false

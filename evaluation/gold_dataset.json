@@ -1,0 +1,137 @@
+[
+    {
+        "id": "q01",
+        "query": "What is Image Segmentation?",
+        "expected_topic": "Image Segmentation",
+        "expected_prerequisites": ["Computer Vision", "Digital Image Processing"],
+        "relevant_doc_keywords": ["segmentation", "pixel", "region", "partition", "semantic"],
+        "reference_answer": "Image segmentation is the process of partitioning a digital image into multiple meaningful segments or regions. Each segment typically corresponds to different objects or parts of objects in the image. The goal is to simplify the representation of an image into something more meaningful and easier to analyze. Key approaches include thresholding, edge-based segmentation, region-based segmentation, and clustering methods.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q02",
+        "query": "Explain Semantic Segmentation",
+        "expected_topic": "Semantic Segmentation",
+        "expected_prerequisites": ["Image Segmentation", "Deep Learning"],
+        "relevant_doc_keywords": ["semantic", "pixel", "class", "label", "classification"],
+        "reference_answer": "Semantic segmentation is a computer vision task where every pixel in an image is assigned a class label. Unlike object detection which uses bounding boxes, semantic segmentation provides pixel-level understanding of the scene. Deep learning approaches, particularly Fully Convolutional Networks (FCN) and U-Net architectures, have significantly advanced the field by enabling end-to-end pixel-wise classification.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q03",
+        "query": "What is Feature Extraction?",
+        "expected_topic": "Feature Extraction",
+        "expected_prerequisites": ["Digital Image Processing"],
+        "relevant_doc_keywords": ["feature", "descriptor", "keypoint", "corner", "edge"],
+        "reference_answer": "Feature extraction in computer vision involves identifying and describing distinctive points or regions in an image. These features, such as corners, edges, and blobs, serve as compact representations that can be used for tasks like image matching, object recognition, and tracking. Common methods include edge detection, corner detection (Harris, Shi-Tomasi), and computing local descriptors like SIFT and SURF.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q04",
+        "query": "What is Camera Calibration?",
+        "expected_topic": "Camera Calibration",
+        "expected_prerequisites": ["Linear Algebra", "Optics"],
+        "relevant_doc_keywords": ["calibration", "intrinsic", "extrinsic", "matrix", "distortion", "focal"],
+        "reference_answer": "Camera calibration is the process of estimating the intrinsic and extrinsic parameters of a camera. Intrinsic parameters include focal length, principal point, and lens distortion coefficients. Extrinsic parameters describe the camera's position and orientation in world coordinates. Calibration is essential for accurate 3D reconstruction, stereo vision, and augmented reality applications.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q05",
+        "query": "Explain Pose Estimation",
+        "expected_topic": "Pose Estimation",
+        "expected_prerequisites": ["Camera Calibration", "3D Geometry"],
+        "relevant_doc_keywords": ["pose", "rotation", "translation", "3D", "position", "orientation"],
+        "reference_answer": "Pose estimation determines the position and orientation of an object or camera in 3D space. It involves computing the rotation and translation parameters that relate the object's coordinate system to the camera's coordinate system. This requires solving the Perspective-n-Point (PnP) problem using known 2D-3D point correspondences, and is fundamental to robotics, augmented reality, and autonomous navigation.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q06",
+        "query": "What is Object Detection?",
+        "expected_topic": "Object Detection",
+        "expected_prerequisites": ["Deep Learning", "Image Segmentation"],
+        "relevant_doc_keywords": ["detection", "bounding", "box", "classify", "localize", "YOLO", "CNN"],
+        "reference_answer": "Object detection is a computer vision task that involves both localizing and classifying objects within an image. It produces bounding boxes around detected objects along with class labels and confidence scores. Modern deep learning approaches include two-stage detectors like Faster R-CNN and single-stage detectors like YOLO and SSD, which offer different trade-offs between speed and accuracy.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q07",
+        "query": "Explain Hadoop",
+        "expected_topic": "Hadoop",
+        "expected_prerequisites": ["Java", "Distributed Systems"],
+        "relevant_doc_keywords": ["hadoop", "distributed", "cluster", "HDFS", "MapReduce", "node"],
+        "reference_answer": "Apache Hadoop is an open-source framework for distributed storage and processing of large datasets across clusters of computers. It consists of two core components: HDFS (Hadoop Distributed File System) for reliable distributed storage, and MapReduce for parallel data processing. Hadoop enables fault-tolerant computation by replicating data blocks across multiple nodes in the cluster.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q08",
+        "query": "What is HDFS?",
+        "expected_topic": "HDFS",
+        "expected_prerequisites": ["Hadoop", "Storage Systems"],
+        "relevant_doc_keywords": ["HDFS", "distributed", "file", "block", "replication", "namenode", "datanode"],
+        "reference_answer": "HDFS (Hadoop Distributed File System) is a distributed file system designed to store very large files reliably across multiple machines in a Hadoop cluster. It splits files into fixed-size blocks (typically 128MB) and replicates each block across multiple DataNodes for fault tolerance. The NameNode manages the file system metadata, directory structure, and tracks which DataNodes hold each block.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q09",
+        "query": "How does MapReduce work?",
+        "expected_topic": "MapReduce",
+        "expected_prerequisites": ["Hadoop", "Parallel Programming"],
+        "relevant_doc_keywords": ["map", "reduce", "key", "value", "parallel", "shuffle", "sort"],
+        "reference_answer": "MapReduce is a programming model for processing large datasets in parallel across a distributed cluster. It works in two main phases: the Map phase processes input key-value pairs and emits intermediate key-value pairs, and the Reduce phase aggregates all intermediate values sharing the same key to produce final results. Between these phases, a shuffle and sort step groups intermediate data by key for the reducers.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q10",
+        "query": "What is RAG?",
+        "expected_topic": "RAG",
+        "expected_prerequisites": ["Large Language Models", "Information Retrieval"],
+        "relevant_doc_keywords": ["retrieval", "augmented", "generation", "vector", "embedding", "context", "LLM"],
+        "reference_answer": "RAG (Retrieval Augmented Generation) is a technique that enhances Large Language Model responses by first retrieving relevant information from an external knowledge base and then injecting that retrieved context into the LLM prompt to generate more accurate, grounded answers. It combines information retrieval methods like vector similarity search with generative AI to reduce hallucinations and improve factual accuracy.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q11",
+        "query": "Explain Vectorless RAG",
+        "expected_topic": "Vectorless RAG",
+        "expected_prerequisites": ["RAG", "Knowledge Graphs", "Lexical Search"],
+        "relevant_doc_keywords": ["vectorless", "BM25", "keyword", "graph", "lexical", "knowledge"],
+        "reference_answer": "Vectorless RAG is a retrieval approach that does not rely on vector embeddings for finding relevant context. Instead, it uses methods like BM25 keyword matching, knowledge graphs, or lexical search to retrieve relevant documents. This can be more efficient and interpretable than vector-based approaches, and works particularly well when exact keyword matching is important or when computational resources for embedding models are limited.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q12",
+        "query": "What is Deep Learning?",
+        "expected_topic": "Deep Learning",
+        "expected_prerequisites": [],
+        "relevant_doc_keywords": ["neural", "network", "layer", "training", "backpropagation", "deep"],
+        "reference_answer": "Deep Learning is a subset of machine learning that uses artificial neural networks with multiple hidden layers to learn hierarchical representations of data. It automatically discovers relevant features from raw data through training with backpropagation and gradient descent. Deep learning has achieved breakthrough performance in computer vision, natural language processing, and speech recognition tasks.",
+        "category": "conceptual"
+    },
+    {
+        "id": "q13",
+        "query": "Quiz me on RAG",
+        "expected_topic": "RAG",
+        "expected_prerequisites": ["Large Language Models", "Information Retrieval"],
+        "relevant_doc_keywords": ["retrieval", "augmented", "generation", "vector", "embedding"],
+        "reference_answer": null,
+        "category": "quiz_request"
+    },
+    {
+        "id": "q14",
+        "query": "Quiz me on Image Segmentation",
+        "expected_topic": "Image Segmentation",
+        "expected_prerequisites": ["Computer Vision", "Digital Image Processing"],
+        "relevant_doc_keywords": ["segmentation", "pixel", "region"],
+        "reference_answer": null,
+        "category": "quiz_request"
+    },
+    {
+        "id": "q15",
+        "query": "Can you give me more examples?",
+        "expected_topic": null,
+        "expected_prerequisites": [],
+        "relevant_doc_keywords": [],
+        "reference_answer": null,
+        "category": "follow_up"
+    }
+]
