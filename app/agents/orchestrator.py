@@ -47,6 +47,10 @@ class TutorState(TypedDict):
     user_input: str
     user_id: str
     session_id: str
+    subject_id: str
+    active_part_index: int
+    active_doc_id: str
+    episodic_history: List[Dict[str, str]]
     graph_memory: nx.DiGraph
     head_pointer: str
     root_pointer: str
@@ -230,19 +234,17 @@ def supervisor_node(state: TutorState) -> TutorState:
     logger.info(msg_op)
     
     # 4. Routing Action Intent Classification
-    # Get 4 recent history turns to provide context for intent classification
+    # Get recent episodic history directly from State
     history_str = ""
-    if head_pointer in graph_memory:
-        ancestors = list(nx.ancestors(graph_memory, head_pointer))
-        ancestor_nodes = [(n, graph_memory.nodes[n]) for n in ancestors if "distilled_state" in graph_memory.nodes[n]]
-        ancestor_nodes.sort(key=lambda x: x[1].get("timestamp", ""))
-        recent = ancestor_nodes[-4:]
-        if recent:
-            history_lines = []
-            for n in recent:
-                state_dict = n[1]["distilled_state"]
-                history_lines.append(f"- User: {state_dict.get('q', '')} -> Status: {state_dict.get('status', '')}")
-            history_str = "\n".join(history_lines)
+    recent_history = state.get("episodic_history", [])
+    if recent_history:
+        history_lines = []
+        for msg in recent_history:
+            role = "User" if msg["role"] == "user" else "Tutor"
+            # Strip excessive length for the router
+            content_snippet = msg["content"][:200].replace('\n', ' ')
+            history_lines.append(f"- {role}: {content_snippet}")
+        history_str = "\n".join(history_lines)
             
     router_prompt = f"""You are a strict routing agent. Analyze the User Query and the History.
 Classify the intent into one of:
@@ -250,7 +252,7 @@ Classify the intent into one of:
 2. "chat" (for purely unrelated small talk, greetings, or "yes/no" answers that do NOT relate to the lesson)
 3. "assess" (for explicit requests to take a quiz or test)
 
-CRITICAL: If the intent is "research", you MUST generate a fully standalone "search_query". If the user is saying "yes" to elaborate, the search_query MUST be rewritten to specify the actual topic from the history (e.g. "elaborate on strengths and weaknesses of waterfall model").
+CRITICAL: You MUST generate a fully standalone "search_query" representing the main subject or topic of interest for both "research" and "assess" intents. If the user is saying "yes" to elaborate, the search_query MUST be rewritten to specify the actual topic from the history (e.g. "elaborate on strengths and weaknesses of waterfall model").
 
 User Query: "{user_input}"
 History: {history_str if history_str else 'None'}
@@ -267,7 +269,7 @@ Output ONLY minified JSON format:
             res = res.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         res_data = json.loads(res)
         next_action = res_data.get("intent", "research")
-        state["search_query"] = res_data.get("search_query", user_input)
+        state["search_query"] = res_data.get("search_query") or user_input
         state["rag_constraints"] = res_data.get("constraints", {})
     except Exception as e:
         print(f"  [WARN] LLM Routing failed: {e}. Defaulting to research.")
@@ -277,7 +279,8 @@ Output ONLY minified JSON format:
         
     # Heuristic override for obvious explanation requests that got misrouted
     query_clean = user_input.lower().strip()
-    if any(w in query_clean for w in ["quiz", "test", "assess", "assessment"]):
+    quiz_keywords = ["quiz", "test", "assess", "assessment", "examine", "exam", "question me", "questions on", "evaluate me", "grade me", "quizzes", "practice questions", "trivia", "retake"]
+    if any(w in query_clean for w in quiz_keywords):
         print("  [WARN] Heuristic override: query looks like a quiz request. Forcing ASSESS.")
         next_action = "assess"
     elif next_action == "chat" and (len(query_clean.split()) > 4 or any(w in query_clean for w in ["what", "how", "why", "explain", "tell", "can you", "elaborate"])):
@@ -306,15 +309,7 @@ def _get_persona_prompt(style: str, level: str, mastered_topics: list) -> str:
         
     # Build the specific stylistic instruction
     style_inst = ""
-    if style == "visual":
-        if level == "Beginner":
-            style_inst = "Explain using vivid, simple visual imagery. Example: 'Imagine a cell is like a bustling city, and the mitochondria are the power plants.'"
-        elif level == "Intermediate":
-            style_inst = "Use structural and spatial visual descriptions. Example: 'Visualize the mitochondria as a double-membraned organelle where the inner membrane is highly folded.'"
-        else: # Advanced
-            style_inst = "Provide precise topographic and structural visualizations. Example: 'Visualize the highly invaginated cristae of the inner mitochondrial membrane maximizing surface area for oxidative phosphorylation.'"
-            
-    elif style == "step-by-step":
+    if style == "step-by-step":
         if level == "Beginner":
             style_inst = "Break explanations into simple 1-2-3 steps. Avoid paragraphs. Example: '1. Sunlight hits the leaf. 2. The leaf makes food.'"
         elif level == "Intermediate":
@@ -322,40 +317,6 @@ def _get_persona_prompt(style: str, level: str, mastered_topics: list) -> str:
         else:
             style_inst = "Provide strict algorithmic or process-driven numbered steps. Example: '1. Photoexcitation of P680. 2. Plastoquinone reduction...'"
             
-    elif style == "analogy-based":
-        if level == "Beginner":
-            if topics_str:
-                style_inst = f"Anchor every concept using extremely simple analogies drawn from topics the student has already mastered: [{topics_str}]."
-            else:
-                style_inst = "Anchor every concept using extremely simple everyday analogies (like cooking, sports, or cars)."
-        elif level == "Intermediate":
-            if topics_str:
-                style_inst = f"Use conceptual analogies mapped from these topics the student knows: [{topics_str}]."
-            else:
-                style_inst = "Use standard conceptual analogies to map complex ideas to familiar systems."
-        else:
-            if topics_str:
-                style_inst = f"Use sophisticated structural isomorphisms connecting the current topic to: [{topics_str}]."
-            else:
-                style_inst = "Use highly advanced conceptual analogies mapping theoretical frameworks to known complex systems."
-                
-    elif style == "example-heavy":
-        if level == "Beginner":
-            if topics_str:
-                style_inst = f"Provide multiple simple, concrete examples relying ONLY on subjects the student has mastered: [{topics_str}]."
-            else:
-                style_inst = "Provide multiple simple, real-world examples (like everyday objects or basic activities) to ground every rule."
-        elif level == "Intermediate":
-            if topics_str:
-                style_inst = f"Provide multiple applied examples bridging the current topic with: [{topics_str}]."
-            else:
-                style_inst = "Provide multiple concrete, industry-standard examples immediately after stating a rule."
-        else:
-            if topics_str:
-                style_inst = f"Provide multiple expert-level case studies or advanced examples integrating: [{topics_str}]."
-            else:
-                style_inst = "Provide multiple edge-case examples and advanced academic case studies."
-                
     elif style == "concise":
         if level == "Beginner":
             style_inst = "Be extremely brief and direct using simple words. Cut all fluff."
@@ -386,9 +347,24 @@ def researcher_node(state: TutorState) -> TutorState:
     print("[Researcher] Starting Agentic Hybrid RAG Pipeline...")
     user_input = state["user_input"]
     active_topic = state.get("active_topic", "")
+    subject_id = state.get("subject_id", "default_subject")
+    
+    # Retrieve active study state from SQLite
+    mem_sys = UserMemory(user_id=state["user_id"])
+    study_state = mem_sys.get_active_study_state(subject_id)
+    active_doc_id = study_state.get("active_doc_id")
+    active_part_index = study_state.get("active_part_index")
+    
+    # Strictly filter the RAG constraints by active document and part!
+    constraints = state.get("rag_constraints", {}) or {}
+    if active_doc_id:
+        constraints["doc_id"] = active_doc_id
+        constraints["part_index"] = active_part_index
+        print(f"  [Researcher] Enforcing strict curriculum constraints: doc_id='{active_doc_id}', part={active_part_index}")
+    state["rag_constraints"] = constraints
     
     # --- Step 1: KG Query Enrichment ---
-    search_query = state.get("search_query", user_input)
+    search_query = state.get("search_query") or user_input
     enriched_query = search_query
     try:
         from app.graph.knowledge_graph import EducationalKnowledgeGraph
@@ -415,8 +391,9 @@ def researcher_node(state: TutorState) -> TutorState:
     retriever = get_retriever()
     
     constraints = state.get("rag_constraints", {})
+    subject_id = state.get("subject_id", "default_subject")
     # The new retrieve function handles Lanchain Ensemble logic and returns docs
-    docs = retriever.retrieve(enriched_query, constraints=constraints)
+    docs = retriever.retrieve(enriched_query, subject_id=subject_id, constraints=constraints)
     raw_chunks = [d.page_content for d in docs]
     
     if not raw_chunks:
@@ -442,7 +419,6 @@ Source Text:
 Output ONLY minified JSON:"""
 
     try:
-        from app.utils.config import get_tutor_llm
         llm = get_tutor_llm()
         response = llm.complete(prompt)
         compressed_json = str(response).strip()
@@ -461,7 +437,7 @@ Output ONLY minified JSON:"""
         state["active_rag_context"] = source_text[:1000]
 
     # --- Step 4: State Update ---
-    state["next_action"] = "chat"
+    # Do not overwrite next_action so route_post_researcher can route to assessor if needed
     return state
 
 def pedagogue_node(state: TutorState) -> TutorState:
@@ -472,48 +448,42 @@ def pedagogue_node(state: TutorState) -> TutorState:
     active_rag_context = state["active_rag_context"]
     next_action = state["next_action"]
     
-    # 1. Traverse non-linear graph backward from HEAD
+    # 1. Fetch exact Episodic Chat History directly from State
     history_str = ""
-    if head_pointer in graph_memory:
-        ancestors = list(nx.ancestors(graph_memory, head_pointer))
-        ancestor_nodes = []
-        for node in ancestors:
-            if node in graph_memory.nodes:
-                node_data = graph_memory.nodes[node]
-                # Filter out raw turns, extract only distilled_state
-                distilled = node_data.get("distilled_state")
-                if distilled and isinstance(distilled, dict) and distilled.get("q"):
-                    ancestor_nodes.append((node, node_data))
-                    
-        # Sort chronologically by timestamp
-        ancestor_nodes.sort(key=lambda x: x[1].get("timestamp", ""))
-        
-        # Take max of 4 most recent past turns
-        recent_ancestors = ancestor_nodes[-4:]
-        
-        if recent_ancestors:
-            history_lines = []
-            for n in recent_ancestors:
-                state_dict = n[1]["distilled_state"]
-                history_lines.append(f"- User: {state_dict.get('q', '')} -> Status: {state_dict.get('status', '')}")
-            history_str = "\n".join(history_lines)
+    recent_history = state.get("episodic_history", [])
+    if recent_history:
+        history_lines = []
+        for msg in recent_history:
+            role = "User" if msg["role"] == "user" else "Tutor"
+            history_lines.append(f"- {role}: {msg['content']}")
+        history_str = "\n".join(history_lines)
             
     if not history_str:
         history_str = "No recent thread history."
         
     # Get profile style guidelines
     memory_sys = UserMemory(user_id=state.get("user_id", "default_user"))
-    profile = memory_sys.get_semantic_memory()
+    subject_id = state.get("subject_id", "default_subject")
+    profile = memory_sys.get_semantic_memory(subject_id=subject_id)
     style = profile.get("preferred_style", "default")
     academic_level = profile.get("academic_level", "Intermediate")
     completed_topics = profile.get("completed_topics", [])
     
     unified_persona = _get_persona_prompt(style, academic_level, completed_topics)
     
+    # Get active part details
+    study_state = memory_sys.get_active_study_state(subject_id)
+    active_doc_id = study_state.get("active_doc_id")
+    active_part_index = study_state.get("active_part_index", 1)
+    
+    part_details = memory_sys.get_document_part(active_doc_id, active_part_index) if active_doc_id else None
+    part_title = part_details.get("part_title", "General Syllabus") if part_details else "General Syllabus"
+    
+    unified_persona = _get_persona_prompt(style, academic_level, completed_topics)
+    
     # Generate response
-        
     if next_action == "chat":
-        prompt = f"""You are a friendly offline AI Tutor. The student is engaging in small talk, answering "yes/no", or asking a simple follow-up.
+        prompt = f"""You are a friendly offline AI Tutor for subject '{subject_id}'. The student is engaging in small talk, answering "yes/no", or asking a simple follow-up.
         Using the recent thread history (if any), keep your response conversational, polite, and directly address their statement. 
         Limit your response to 2-3 sentences maximum.
         
@@ -529,19 +499,24 @@ def pedagogue_node(state: TutorState) -> TutorState:
         llm = get_tutor_llm()
     else:
         if active_rag_context and "not_found" not in active_rag_context:
-            system_prompt = f"""You are an expert offline AI Tutor. 
-            Core facts MUST match the RAG source provided below. If a fact is not in the source, explicitly say so.
-            You may use outside concepts ONLY to create stylistic analogies or programming syntax examples.
+            system_prompt = f"""You are an expert offline AI Tutor for subject '{subject_id}'. 
+            The student is currently studying: '{part_title}' (Part {active_part_index}).
+            Core facts MUST match the RAG source provided below, which represents the exact content of this curriculum part.
             
-            RAG Source: {active_rag_context}"""
-        else:
-            system_prompt = """You are a helpful academic guide. 
-            The current question falls outside the provided course syllabus. 
-            Answer the question using general concepts. Do not invent specific technical metrics or historical facts.
+            RAG Source: {active_rag_context}
+            
             CRITICAL INSTRUCTIONS:
             1. You MUST write your explanation following the requested STUDENT PROFILE & PERSONALIZATION style and level.
-            2. Keep the answer highly focused on the exact question.
-            3. End your response by asking the student what specific topic from their syllabus they would like to study next."""
+            2. Explicitly end your response by reminding the student they are studying Part {active_part_index} ('{part_title}') and invite them to type 'quiz me' once they are ready to test their mastery and unlock the next part!"""
+        else:
+            system_prompt = f"""You are a helpful academic guide for subject '{subject_id}'. 
+            The student's query falls outside the scope of the active sequential curriculum part: '{part_title}' (Part {active_part_index}). 
+            Answer the question accurately using general concepts. Do not invent specific technical metrics.
+            
+            CRITICAL INSTRUCTIONS:
+            1. You MUST write your explanation following the requested STUDENT PROFILE & PERSONALIZATION style and level.
+            2. Answer their question politely, but immediately after, gracefully guide the student back to the active syllabus unit '{part_title}'.
+            3. Conclude by asking if they are ready to return to the active lesson: '{part_title}' (Part {active_part_index})."""
             
         # Standard lesson explanation
         prompt = f"""{system_prompt}
@@ -610,13 +585,23 @@ def assessor_node(state: TutorState) -> TutorState:
     
     # Get profile settings
     memory_sys = UserMemory(user_id=state["user_id"])
-    profile = memory_sys.get_semantic_memory()
+    subject_id = state.get("subject_id", "default_subject")
+    profile = memory_sys.get_semantic_memory(subject_id=subject_id)
     difficulty = profile.get("quiz_difficulty", "Medium")
     num_questions = profile.get("quiz_questions", 3)
     
-    prompt = f"""You are a strict academic Quiz Agent. Based on the following study materials, generate exactly {num_questions} multiple choice questions at a {difficulty} difficulty level.
+    # Get active part details
+    study_state = memory_sys.get_active_study_state(subject_id)
+    active_doc_id = study_state.get("active_doc_id")
+    active_part_index = study_state.get("active_part_index", 1)
     
-    Study Materials: 
+    part_details = memory_sys.get_document_part(active_doc_id, active_part_index) if active_doc_id else None
+    part_title = part_details.get("part_title", "General Syllabus") if part_details else "General Syllabus"
+    
+    prompt = f"""You are a strict academic Quiz Agent. Generate exactly {num_questions} multiple choice questions at a {difficulty} difficulty level.
+    These questions MUST be drawn strictly and exclusively from the study materials for the current active subtopic: '{part_title}' (Part {active_part_index}).
+    
+    Study Materials (Facts for the active part context): 
     {active_rag_context if active_rag_context else 'No study materials available.'}
     
     CRITICAL ANTI-HALLUCINATION INSTRUCTIONS:
@@ -641,7 +626,7 @@ def assessor_node(state: TutorState) -> TutorState:
     # Enforce token budget
     if len(prompt) > 6000:
         active_rag_context = active_rag_context[:1000]
-        prompt = f"""You are a strict Quiz Agent. Based on these materials, generate {num_questions} questions ({difficulty}).
+        prompt = f"""You are a strict Quiz Agent. Based on these materials, generate {num_questions} questions ({difficulty}) for '{part_title}' (Part {active_part_index}).
         Materials: {active_rag_context}
         CRITICAL INSTRUCTION: You MUST generate questions ONLY based on the facts present in the Materials.
         You MUST output ONLY valid JSON format: [{{"question":"...","options":["A","B","C","D"],"correct":0,"explanation":"..."}}]
@@ -735,8 +720,16 @@ def scribe_node(state: TutorState) -> TutorState:
     if next_action == "assess":
         quiz_status = f"Generated quiz on topic {topic_label}"
         mem_sys.add_chat_message("assistant", quiz_status, session_id)
+        final_assistant_content = quiz_status
     else:
         mem_sys.add_chat_message("assistant", final_output, session_id)
+        final_assistant_content = final_output
+        
+    # Append the new turn directly to episodic_history inside the State
+    history = list(state.get("episodic_history", []))
+    history.append({"role": "user", "content": user_input})
+    history.append({"role": "assistant", "content": final_assistant_content})
+    state["episodic_history"] = history
         
     state["active_topic"] = topic_label
     print(f"  [OK] Saved node {head_pointer} with Topic: '{topic_label}' and Distilled state: {distilled_data}")
@@ -805,12 +798,13 @@ def generate_state_graph_html(active_node=None, completed_nodes=None):
         completed_nodes = []
     
     nodes = [
-        {"id": "__start__",   "label": "START", "x": 300, "y": 30},
-        {"id": "supervisor",  "label": "🚦 Git Supervisor", "x": 300, "y": 120},
-        {"id": "researcher",  "label": "📚 RAG Researcher", "x": 180, "y": 240},
-        {"id": "pedagogue",   "label": "🧠 Pedagogue Tutor", "x": 300, "y": 360},
-        {"id": "scribe",      "label": "✍️ Scribe Memory", "x": 300, "y": 450},
-        {"id": "__end__",      "label": "END", "x": 300, "y": 530},
+        {"id": "__start__",   "label": "START", "x": 350, "y": 30},
+        {"id": "supervisor",  "label": "🚦 Git Supervisor", "x": 350, "y": 110},
+        {"id": "researcher",  "label": "📚 RAG Researcher", "x": 200, "y": 200},
+        {"id": "pedagogue",   "label": "🧠 Pedagogue Tutor", "x": 200, "y": 320},
+        {"id": "assessor",    "label": "📝 Quiz Assessor", "x": 500, "y": 320},
+        {"id": "scribe",      "label": "✍️ Scribe Memory", "x": 350, "y": 440},
+        {"id": "__end__",      "label": "END", "x": 350, "y": 520},
     ]
     
     edges = [
@@ -818,7 +812,9 @@ def generate_state_graph_html(active_node=None, completed_nodes=None):
         ("supervisor", "researcher"),
         ("supervisor", "pedagogue"),
         ("researcher", "pedagogue"),
+        ("researcher", "assessor"),
         ("pedagogue", "scribe"),
+        ("assessor", "scribe"),
         ("scribe", "__end__"),
     ]
     
@@ -1027,15 +1023,18 @@ def generate_memory_graph_html(graph_memory: nx.DiGraph, head_pointer: str) -> s
 </html>"""
     return html
 
-def stream_tutor_pipeline(query: str, user_id: str = "default_user", session_id: str = "default_session"):
+def stream_tutor_pipeline(query: str, user_id: str = "default_user", session_id: str = "default_session", subject_id: str = "default_subject"):
     # Load session state graph memory from SQLite
     mem_sys = UserMemory(user_id=user_id)
     graph_memory, head_pointer, root_pointer = mem_sys.load_graph_memory(session_id)
+    episodic_history = mem_sys.get_chat_history(session_id, limit=7)
     
     initial_state = TutorState(
         user_input=query,
         user_id=user_id,
         session_id=session_id,
+        subject_id=subject_id,
+        episodic_history=episodic_history,
         graph_memory=graph_memory,
         head_pointer=head_pointer,
         root_pointer=root_pointer,
@@ -1051,15 +1050,18 @@ def stream_tutor_pipeline(query: str, user_id: str = "default_user", session_id:
         for node_name, state in output.items():
             yield node_name, state
 
-def run_tutor_pipeline(query: str, user_id: str = "default_user", session_id: str = "default_session"):
+def run_tutor_pipeline(query: str, user_id: str = "default_user", session_id: str = "default_session", subject_id: str = "default_subject"):
     # Load session state graph memory from SQLite
     mem_sys = UserMemory(user_id=user_id)
     graph_memory, head_pointer, root_pointer = mem_sys.load_graph_memory(session_id)
+    episodic_history = mem_sys.get_chat_history(session_id, limit=7)
     
     initial_state = TutorState(
         user_input=query,
         user_id=user_id,
         session_id=session_id,
+        subject_id=subject_id,
+        episodic_history=episodic_history,
         graph_memory=graph_memory,
         head_pointer=head_pointer,
         root_pointer=root_pointer,

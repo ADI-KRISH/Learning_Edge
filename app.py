@@ -5,54 +5,141 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 import streamlit as st
 import chromadb
+import datetime
 
 # Import the orchestrator and memory
 from app.agents.orchestrator import stream_tutor_pipeline, generate_state_graph_html, OllamaConnectionError
 from app.memory.user_memory import UserMemory
 from app.utils.ollama_helper import is_ollama_running, ensure_ollama_running
+from app.rag.ingestion import ContextualIngestor
+from app.utils.config import DATA_DIR, VECTOR_DB_DIR
 
 # Set page config
 st.set_page_config(
-    page_title="Offline AI Tutor",
+    page_title="Learning Edge: Multi-Subject AI Tutor",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Initialize Session State for Chat
+# Initialize Session State
 if "user_id" not in st.session_state:
     st.session_state.user_id = "default_user"
+
+if "active_subject_id" not in st.session_state:
+    st.session_state.active_subject_id = "default_subject"
 
 if "active_session_id" not in st.session_state:
     st.session_state.active_session_id = "default_session"
 
 # Restore memory profile globally
 mem = UserMemory(st.session_state.user_id)
-semantic = mem.get_semantic_memory()
+
+# Ensure subject default exists and load active semantic memory
+subjects = mem.get_subjects()
+subject_ids = [s["subject_id"] for s in subjects]
+if st.session_state.active_subject_id not in subject_ids:
+    st.session_state.active_subject_id = "default_subject"
+
+semantic = mem.get_semantic_memory(st.session_state.active_subject_id)
 
 if "chat_history" not in st.session_state:
-    # Restore chat history from the persistent SQLite database for the active session on reload!
     st.session_state.chat_history = mem.get_chat_history(st.session_state.active_session_id, limit=50)
 
-from app.rag.ingestion import DocumentIngestionPipeline
-from app.utils.config import DATA_DIR, VECTOR_DB_DIR
+# --- Dynamic Subject Manager Sidebar ---
+st.sidebar.markdown("### 📚 Subjects")
 
-# --- Chat Sessions Manager ---
+def on_subject_change():
+    new_sub = st.session_state.subject_selectbox
+    st.session_state.active_subject_id = new_sub
+    db_mem = UserMemory(st.session_state.user_id)
+    
+    # Load first chat session of new subject
+    sub_sessions = db_mem.get_chat_sessions(new_sub)
+    if sub_sessions:
+        st.session_state.active_session_id = sub_sessions[0]["session_id"]
+    else:
+        default_sid = f"session_{new_sub}_default"
+        db_mem.create_chat_session(default_sid, "Default Subject Session", new_sub)
+        st.session_state.active_session_id = default_sid
+        
+    st.session_state.chat_history = db_mem.get_chat_history(st.session_state.active_session_id, limit=50)
+    st.session_state.active_quiz = None
+
+subject_titles = {s["subject_id"]: s["subject_name"] for s in subjects}
+selected_subject_idx = subject_ids.index(st.session_state.active_subject_id) if st.session_state.active_subject_id in subject_ids else 0
+
+selected_subject_id = st.sidebar.selectbox(
+    "Select Active Subject",
+    options=subject_ids,
+    format_func=lambda sid: subject_titles.get(sid, "General Knowledge"),
+    index=selected_subject_idx,
+    key="subject_selectbox",
+    on_change=on_subject_change,
+    label_visibility="collapsed"
+)
+
+# Expander to Add a New Subject + Upload Syllabus
+with st.sidebar.expander("📁 Add New Subject"):
+    new_sub_name = st.text_input("Subject Name", placeholder="e.g. Natural Language Processing")
+    uploaded_syllabus = st.file_uploader("Upload Subject Syllabus/Material", type=["pdf", "txt"])
+    
+    if st.button("Initialize Subject", width="stretch"):
+        if new_sub_name.strip():
+            sub_id = new_sub_name.strip().lower().replace(" ", "_")
+            
+            # 1. Create subject directories
+            sub_data_dir = os.path.join(DATA_DIR, sub_id)
+            os.makedirs(sub_data_dir, exist_ok=True)
+            
+            file_name = ""
+            if uploaded_syllabus:
+                file_name = uploaded_syllabus.name
+                file_path = os.path.join(sub_data_dir, file_name)
+                with open(file_path, "wb") as f:
+                    f.write(uploaded_syllabus.getbuffer())
+            
+            # 2. Register subject
+            mem.add_subject(sub_id, new_sub_name.strip(), file_name)
+            
+            # 3. Trigger Contextual Retrieval Ingestion if a document was uploaded
+            if uploaded_syllabus:
+                with st.status(f"Ingesting {file_name} with Contextual Retrieval..."):
+                    ingestor = ContextualIngestor()
+                    ingestor.ingest_subject_documents(sub_id)
+            
+            # 4. Create default chat session
+            default_sid = f"session_{sub_id}_default"
+            mem.create_chat_session(default_sid, f"Welcome to {new_sub_name}", sub_id)
+            
+            # 5. Swap State & reload
+            st.session_state.active_subject_id = sub_id
+            st.session_state.active_session_id = default_sid
+            st.session_state.chat_history = mem.get_chat_history(default_sid)
+            st.session_state.active_quiz = None
+            st.success(f"'{new_sub_name}' initialized!")
+            st.rerun()
+        else:
+            st.warning("Subject name is required.")
+
+st.sidebar.markdown("---")
+
+# --- Subject-Aware Chat Sessions Manager ---
 st.sidebar.markdown("### 💬 Chat Sessions")
 
-# Get list of sessions from SQLite
-sessions = mem.get_chat_sessions()
+sessions = mem.get_chat_sessions(st.session_state.active_subject_id)
 session_ids = [s["session_id"] for s in sessions]
 session_titles = {s["session_id"]: s["title"] for s in sessions}
 
-# Make sure active_session_id exists in the session database.
 if st.session_state.active_session_id not in session_ids:
-    mem.create_chat_session(st.session_state.active_session_id, "Default Chat Session")
-    sessions = mem.get_chat_sessions()
+    default_sid = f"session_{st.session_state.active_subject_id}_default"
+    if default_sid not in session_ids:
+        mem.create_chat_session(default_sid, "Default Subject Session", st.session_state.active_subject_id)
+    st.session_state.active_session_id = default_sid
+    sessions = mem.get_chat_sessions(st.session_state.active_subject_id)
     session_ids = [s["session_id"] for s in sessions]
     session_titles = {s["session_id"]: s["title"] for s in sessions}
 
-# Callback to handle session changes safely without infinite reruns
 def on_session_change():
     new_sid = st.session_state.session_selectbox
     st.session_state.active_session_id = new_sid
@@ -60,7 +147,6 @@ def on_session_change():
     st.session_state.chat_history = db_mem.get_chat_history(new_sid, limit=50)
     st.session_state.active_quiz = None
 
-# Render a dropdown selector to choose past chat sessions
 selected_session_idx = session_ids.index(st.session_state.active_session_id) if st.session_state.active_session_id in session_ids else 0
 selected_session_id = st.sidebar.selectbox(
     "Select Session",
@@ -73,10 +159,9 @@ selected_session_id = st.sidebar.selectbox(
 )
 
 def on_new_chat():
-    import datetime
-    timestamp_id = f"session_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    timestamp_id = f"session_{st.session_state.active_subject_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
     db_mem = UserMemory(st.session_state.user_id)
-    db_mem.create_chat_session(timestamp_id, "New Chat Session")
+    db_mem.create_chat_session(timestamp_id, "New Chat Session", st.session_state.active_subject_id)
     st.session_state.active_session_id = timestamp_id
     st.session_state.session_selectbox = timestamp_id
     st.session_state.chat_history = []
@@ -85,38 +170,35 @@ def on_new_chat():
 def on_delete_chat():
     db_mem = UserMemory(st.session_state.user_id)
     db_mem.delete_chat_session(st.session_state.active_session_id)
-    remaining_sessions = db_mem.get_chat_sessions()
+    remaining_sessions = db_mem.get_chat_sessions(st.session_state.active_subject_id)
     if remaining_sessions:
         st.session_state.active_session_id = remaining_sessions[0]["session_id"]
     else:
-        st.session_state.active_session_id = "default_session"
+        st.session_state.active_session_id = f"session_{st.session_state.active_subject_id}_default"
     st.session_state.session_selectbox = st.session_state.active_session_id
     st.session_state.chat_history = db_mem.get_chat_history(st.session_state.active_session_id, limit=50)
     st.session_state.active_quiz = None
 
-# Session Actions: New Chat, Delete active chat in a clean row
 col1, col2 = st.sidebar.columns(2)
 with col1:
     st.button("➕ New Chat", width="stretch", on_click=on_new_chat)
-
 with col2:
-    is_default = (st.session_state.active_session_id == "default_session")
+    is_default = (st.session_state.active_session_id == f"session_{st.session_state.active_subject_id}_default")
     st.button("🗑️ Delete Chat", width="stretch", disabled=is_default, on_click=on_delete_chat)
 
-# Expander to manually rename the active session title
 with st.sidebar.expander("📝 Rename Current Chat"):
-    current_title = session_titles.get(st.session_state.active_session_id, "Default Chat Session")
+    current_title = session_titles.get(st.session_state.active_session_id, "Default Subject Session")
     new_title = st.text_input("New Title", value=current_title, key="rename_session_input")
     if st.button("Save Title", width="stretch"):
         if new_title.strip():
             mem.update_session_title(st.session_state.active_session_id, new_title.strip())
             st.rerun()
 
-# Expander to visualize the Non-Linear Graph Memory Git-tree
+# Non-Linear tree view
 try:
     _graph, _head, _root = mem.load_graph_memory(st.session_state.active_session_id)
-    with st.sidebar.expander("🕸️ Non-Linear Git-Tree Memory", expanded=True):
-        st.caption("Real-time visual tree of branching conversation contexts.")
+    with st.sidebar.expander("🕸️ Conversation Tree", expanded=True):
+        st.caption("Active branching conversation history nodes.")
         
         def build_nested_tree(graph, node, prefix="", is_last=True):
             label = graph.nodes[node].get("topic_label", "Untitled")
@@ -139,22 +221,19 @@ except Exception as e:
 
 st.sidebar.markdown("---")
 
-# Sidebar Navigation
+# Navigation
 st.sidebar.title("Navigation")
-
-# Dynamic notification badge for Active Quiz
 quiz_opt = "Active Quiz"
 if "active_quiz" in st.session_state and st.session_state.active_quiz and not st.session_state.active_quiz["submitted"]:
     quiz_opt = "Active Quiz (NEW 🛑)"
 
-page = st.sidebar.radio("Go to:", ["Dashboard", "Learn", quiz_opt, "Graph Visualization", "Agent Architecture"])
-
+page = st.sidebar.radio("Go to:", ["Dashboard", "Learn", quiz_opt, "Concept Knowledge Graph", "Agent Architecture"])
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🎯 Personalization")
 
-# Render select boxes for style and academic level inside the chat sidebar
-styles = ["default", "visual", "step-by-step", "analogy-based", "example-heavy", "concise", "detailed"]
+# Personalization
+st.sidebar.subheader("🎯 Personalization")
+styles = ["default", "step-by-step", "concise", "detailed"]
 levels = ["Beginner", "Intermediate", "Advanced"]
 
 current_style = semantic.get("preferred_style", "default")
@@ -170,41 +249,41 @@ if new_style != current_style or new_level != current_level:
     updated = semantic.copy()
     updated["preferred_style"] = new_style
     updated["academic_level"] = new_level
-    mem._save_semantic_memory(updated)
+    mem._save_semantic_memory(updated, st.session_state.active_subject_id)
     st.sidebar.success("Preferences updated!")
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🏆 Quiz Scoreboard")
-quiz_history_list = mem.get_quiz_history(limit=5)
-if quiz_history_list:
-    for qh in quiz_history_list:
-        date_str = qh["timestamp"].split(" ")[0] if " " in qh["timestamp"] else qh["timestamp"]
-        status_emoji = "🟢" if qh["passed"] else "🔴"
-        st.sidebar.caption(f"{status_emoji} **{qh['topic']}**: {qh['score']}/{qh['total']} ({date_str})")
-else:
-    st.sidebar.caption("No quizzes taken yet. Ask your tutor to quiz you on a topic!")
 
-st.sidebar.markdown("---")
-st.sidebar.write("**System Status:**")
-st.sidebar.write("🟢 LangGraph Orchestrator: Active")
+# Quick RAG diagnostics
+@st.cache_resource
+def get_chroma_client_singleton():
+    return chromadb.PersistentClient(path=VECTOR_DB_DIR)
 
+try:
+    _db = get_chroma_client_singleton()
+    _col = _db.get_or_create_collection(f"subject_{st.session_state.active_subject_id}")
+    chunk_count = _col.count()
+    if chunk_count > 0:
+        st.sidebar.success(f"📦 {chunk_count} RAG chunks loaded")
+    else:
+        st.sidebar.info("📦 No subject materials ingested")
+except Exception:
+    st.sidebar.info("📦 Vector DB not initialized")
 
-# Check and manage Ollama status dynamically
+# System Ollama Runtime Status Check
 if "ollama_status" not in st.session_state:
     st.session_state.ollama_status = "unknown"
 
 if st.session_state.ollama_status == "unknown":
-    # Silently probe if it's already running first to avoid lag
     if is_ollama_running():
         st.session_state.ollama_status = "running"
     else:
         st.session_state.ollama_status = "offline"
 
 if st.session_state.ollama_status == "running":
-    st.sidebar.write("🟢 **LLM Runtime: Ollama (llama3.2)**")
+    st.sidebar.write("🟢 **LLM: Ollama (llama3.2)**")
 else:
-    st.sidebar.write("🔴 **LLM Runtime: Ollama (Offline)**")
-    # Proactively try to auto-start if offline
+    st.sidebar.write("🔴 **LLM: Ollama (Offline)**")
     if "auto_start_attempted" not in st.session_state:
         st.session_state.auto_start_attempted = True
         with st.sidebar.status("🔌 Waking up Ollama...", expanded=False) as status:
@@ -212,117 +291,121 @@ else:
                 st.session_state.ollama_status = "running"
                 status.update(label="Ollama is ready!", state="complete")
             else:
-                status.update(label="Ollama not running.", state="error")
+                status.update(label="Ollama offline.", state="error")
 
-    # If it is still offline, show a button to manually start it
-    if st.session_state.ollama_status == "offline":
-        if st.sidebar.button("🔌 Start Ollama Server", key="start_ollama_btn"):
-            with st.sidebar.status("Starting Ollama server...", expanded=True) as status:
-                if ensure_ollama_running(timeout_seconds=15):
-                    st.session_state.ollama_status = "running"
-                    status.update(label="Ollama started successfully!", state="complete")
-                else:
-                    status.update(label="Failed to start Ollama. Is it installed?", state="error")
+st.sidebar.write("🟢 LangGraph Pipeline: Active")
 
-
-@st.cache_resource
-def get_chroma_client_singleton():
-    return chromadb.PersistentClient(path=VECTOR_DB_DIR)
-
-# Show how many chunks are already in ChromaDB so user knows data persists
-try:
-    _db = get_chroma_client_singleton()
-    _col = _db.get_or_create_collection("course_materials")
-    chunk_count = _col.count()
-    if chunk_count > 0:
-        st.sidebar.success(f"📦 {chunk_count} chunks already in vector DB")
-    else:
-        st.sidebar.info("📦 No documents ingested yet")
-except Exception:
-    st.sidebar.info("📦 Vector DB not initialized")
-
-# Show uploaded files already on disk
-existing_files = [f for f in os.listdir(DATA_DIR) if os.path.isfile(os.path.join(DATA_DIR, f))] if os.path.exists(DATA_DIR) else []
-if existing_files:
-    st.sidebar.write(f"**📁 {len(existing_files)} file(s) on disk:**")
-    for ef in existing_files:
-        st.sidebar.caption(f"  • {ef}")
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📄 Upload Study Material")
-uploaded_files = st.sidebar.file_uploader("Upload PDFs or Text files", accept_multiple_files=True, type=['pdf', 'txt', 'docx'])
-
-if st.sidebar.button("Process Documents"):
-    if uploaded_files:
-        with st.sidebar.status("Processing Documents..."):
-            for file in uploaded_files:
-                # Save the file to our data directory
-                file_path = os.path.join(DATA_DIR, file.name)
-                with open(file_path, "wb") as f:
-                    f.write(file.getbuffer())
-                st.write(f"Saved {file.name}")
-            
-            # Trigger ingestion
-            st.write("Chunking & Embedding...")
-            pipeline = DocumentIngestionPipeline()
-            pipeline.ingest_documents()
-            st.success("Ingestion Complete!")  # Rerun to update the chunk count in the sidebar
-    else:
-        st.sidebar.warning("Please upload a file first.")
+# --- UI PAGES ---
 
 def dashboard_page():
-    st.title("📊 Learner Dashboard")
-    st.write("Welcome to your offline personalized learning hub. Review your verified academic progress below.")
+    st.title("📊 Multi-Subject Dashboard")
+    st.write("Track your learning progress, concept mastery, and quiz metrics per subject.")
     
-    # Fetch metrics
-    mastered = semantic.get('completed_topics', [])
-    weak = semantic.get('weak_topics', [])
+    # Global metrics
+    all_subjects = mem.get_subjects()
+    num_subjects = len(all_subjects)
+    
+    overall_completed = 0
+    overall_weak = 0
+    for s in all_subjects:
+        sem = mem.get_semantic_memory(s["subject_id"])
+        overall_completed += len(sem.get("completed_topics", []))
+        overall_weak += len(sem.get("weak_topics", []))
+        
     all_quizzes = mem.get_quiz_history(limit=100)
     total_quizzes = len(all_quizzes)
     passed_quizzes = sum(1 for q in all_quizzes if q["passed"])
     
-    # 1. Summary Metrics
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
-        st.metric(label="🏆 Verified Mastered Concepts", value=len(mastered))
+        st.metric(label="📚 Total Subjects Enrolled", value=num_subjects)
     with col_b:
-        st.metric(label="📖 Concepts in Review", value=len(weak))
+        st.metric(label="🏆 Concepts Mastered", value=overall_completed)
     with col_c:
+        st.metric(label="⚠️ Weak Focus Areas", value=overall_weak)
+    with col_d:
         pass_rate = f"{int(passed_quizzes / total_quizzes * 100)}%" if total_quizzes > 0 else "N/A"
         st.metric(label="🎯 Quiz Pass Rate", value=pass_rate, delta=f"{passed_quizzes}/{total_quizzes} passed")
         
     st.divider()
     
-    # 2. Mastery Lists
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("✅ Verified Mastery List")
-        st.caption("These topics have been added automatically by passing academic quizzes.")
-        if mastered:
-            for t in mastered:
-                st.success(f"🎓 **{t}** (Verified Mastered)")
+    # Per-Subject Concept Mastery Progress
+    st.subheader("📈 Subject Concept Mastery Progress")
+    
+    # We load concepts from Knowledge Graph and group them by subject
+    from app.graph.knowledge_graph import EducationalKnowledgeGraph
+    kg = EducationalKnowledgeGraph()
+    
+    for s in all_subjects:
+        sub_id = s["subject_id"]
+        sub_name = s["subject_name"]
+        
+        # Count concepts in unified KG tagged with this subject_id
+        subject_concepts = [node for node in kg.G.nodes if kg.G.nodes[node].get("subject_id") == sub_id]
+        total_concepts = len(subject_concepts)
+        
+        # Load user semantic profile for this subject
+        sem_profile = mem.get_semantic_memory(sub_id)
+        mastered_concepts = [t for t in sem_profile.get("completed_topics", []) if t in subject_concepts or not subject_concepts]
+        
+        comp_count = len(sem_profile.get("completed_topics", []))
+        weak_count = len(sem_profile.get("weak_topics", []))
+        
+        progress = 0.0
+        if total_concepts > 0:
+            progress = min(1.0, float(len(mastered_concepts)) / total_concepts)
+            progress_label = f"{int(progress * 100)}% ({len(mastered_concepts)}/{total_concepts} Concepts)"
         else:
-            st.info("No concepts mastered yet. Ask the tutor to quiz you on a topic to test your knowledge!")
+            progress_label = f"0% (No concepts extracted yet)"
             
-    with col2:
-        st.subheader("⚠️ Weak Topics (Focus Areas)")
-        st.caption("These topics require more study based on quiz scorecards or your learning preferences.")
-        if weak:
-            for t in weak:
-                st.warning(f"📖 **{t}** (Requires Focus)")
-        else:
-            st.success("All caught up! You have no weak topics on record.")
+        col_name, col_bar = st.columns([1, 3])
+        with col_name:
+            st.markdown(f"**{sub_name}**")
+        with col_bar:
+            st.progress(progress, text=progress_label)
             
-    # 3. Detailed Quiz Log
     st.divider()
+    
+    # Subject-by-Subject Mastery Details
+    st.subheader("📋 Academic Mastery Summary")
+    sub_tabs = st.tabs([s["subject_name"] for s in all_subjects])
+    
+    for idx, s in enumerate(all_subjects):
+        with sub_tabs[idx]:
+            sub_id = s["subject_id"]
+            sem_profile = mem.get_semantic_memory(sub_id)
+            comp_list = sem_profile.get("completed_topics", [])
+            weak_list = sem_profile.get("weak_topics", [])
+            
+            col_l, col_r = st.columns(2)
+            with col_l:
+                st.markdown("##### ✅ Mastered Concepts")
+                if comp_list:
+                    for concept in comp_list:
+                        st.success(f"🎓 **{concept}**")
+                else:
+                    st.caption("No concepts mastered yet. Pass a quiz to unlock!")
+            with col_r:
+                st.markdown("##### ⚠️ Focus Areas")
+                if weak_list:
+                    for concept in weak_list:
+                        st.warning(f"📖 **{concept}**")
+                else:
+                    st.success("All concepts verified or up-to-date!")
+                    
+    st.divider()
+    
+    # Detailed Quiz Log
     st.subheader("📋 Academic Quiz History Log")
     if all_quizzes:
         import pandas as pd
-        # Convert quiz records to a clean dataframe for tabular display
         records = []
+        # Create map of subject ids to names
+        sub_name_map = {s["subject_id"]: s["subject_name"] for s in all_subjects}
         for qh in all_quizzes:
             records.append({
                 "Date": qh["timestamp"],
+                "Subject": sub_name_map.get(qh["subject_id"], "General"),
                 "Topic": qh["topic"],
                 "Score": f"{qh['score']}/{qh['total']}",
                 "Status": "🟢 PASSED" if qh["passed"] else "🔴 FAILED"
@@ -330,20 +413,14 @@ def dashboard_page():
         df = pd.DataFrame(records)
         st.dataframe(df, width="stretch", hide_index=True)
     else:
-        st.caption("No quiz logs recorded in SQLite database. Start learning to record your attempts!")
-
+        st.caption("No quiz logs recorded. Start learning to record attempts!")
 
 def repair_json_array(json_str: str) -> str:
-    """Attempts to repair a truncated JSON array of objects by matching quotes, braces, and brackets."""
     json_str = json_str.strip()
     if not json_str.startswith('['):
         return json_str
-        
-    # If the string ends with a comma, strip it
     if json_str.endswith(','):
         json_str = json_str[:-1].strip()
-        
-    # Count open quotes first to see if a string is unclosed
     in_string = False
     escaped = False
     for char in json_str:
@@ -353,16 +430,12 @@ def repair_json_array(json_str: str) -> str:
             if char == '"' and not escaped:
                 in_string = not in_string
             escaped = False
-            
     if in_string:
         json_str += '"'
-        
-    # Now balance braces and brackets
     open_brackets = 0
     open_braces = 0
     escaped = False
     temp_in_string = False
-    
     for char in json_str:
         if char == '\\' and not escaped:
             escaped = True
@@ -379,138 +452,110 @@ def repair_json_array(json_str: str) -> str:
             elif char == '}':
                 open_braces -= 1
         escaped = False
-        
-    # Close open braces and brackets
     if open_braces > 0:
         json_str += '}' * open_braces
     if open_brackets > 0:
         json_str += ']' * open_brackets
-        
     return json_str
 
-
 def learn_page():
-    st.title("📚 Tutor Agent Workspace")
-    st.write("Ask questions and get explanations tailored to your level. Type 'quiz me' at the end to get a quiz!")
+    st.title("📚 Tutor Workspace")
+    st.write(f"Active Subject Room: **{subject_titles.get(st.session_state.active_subject_id, 'General Knowledge')}**")
     
-    # Initialize active quiz session state if not exists
     if "active_quiz" not in st.session_state:
         st.session_state.active_quiz = None
 
-    # Display Chat History
+    # Render Chat
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
             
-    # Input
-    user_input = st.chat_input("Ask your tutor a question...")
+    # Inputs
+    user_input = st.chat_input("Ask your subject tutor a question...")
     if user_input:
-        # Display user message
         st.chat_message("user").write(user_input)
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         
-        # Persist to SQLite so chat survives reloads
+        # Persist message
         _mem = UserMemory(st.session_state.user_id)
         
-        # Auto-rename session if it currently has a default placeholder title
-        current_sessions = _mem.get_chat_sessions()
+        # Auto rename default session title based on query
+        current_sessions = _mem.get_chat_sessions(st.session_state.active_subject_id)
         session_title = next((s["title"] for s in current_sessions if s["session_id"] == st.session_state.active_session_id), "")
-        if session_title in ("Default Chat Session", "New Chat Session"):
-            # Construct a clean 3-4 word title from query
+        if session_title in ("Default Subject Session", "New Chat Session"):
             words = user_input.strip().split()
-            clean_title = " ".join(words[:4])
-            if len(words) > 4:
-                clean_title += "..."
-            clean_title = clean_title.strip('?.!,:;()')
+            clean_title = " ".join(words[:4]).strip('?.!,:;()')
             if clean_title:
                 _mem.update_session_title(st.session_state.active_session_id, clean_title)
                 
         _mem.add_chat_message("user", user_input, st.session_state.active_session_id)
         
-        # Run LangGraph Pipeline
-        # Use a container for the live state graph
+        # Setup LangGraph live state visual
         graph_container = st.container()
         graph_placeholder = graph_container.empty()
-        
-        # Render the initial state graph (all nodes idle)
         with graph_placeholder:
             st.iframe(generate_state_graph_html(), height=580)
         
         completed = []
-        active_topic = "General Knowledge"
+        active_topic = "General Concept"
         try:
-            with st.status("Running Agentic Pipeline...", expanded=True) as status:
+            with st.status("Agentic Pipeline running...", expanded=True) as status:
                 tutor_msg = None
                 quiz_msg = None
-                for node_name, state in stream_tutor_pipeline(user_input, user_id=st.session_state.user_id, session_id=st.session_state.active_session_id):
-                    # Extract active topic dynamically
+                
+                # Stream the subject-aware pipeline!
+                for node_name, state in stream_tutor_pipeline(
+                    user_input, 
+                    user_id=st.session_state.user_id, 
+                    session_id=st.session_state.active_session_id,
+                    subject_id=st.session_state.active_subject_id
+                ):
                     if isinstance(state, dict) and state.get("active_topic"):
                         active_topic = state.get("active_topic")
                     
-                    # Update the SVG graph: current node glows, completed nodes are green
                     with graph_placeholder:
                         st.iframe(generate_state_graph_html(active_node=node_name, completed_nodes=completed), height=580)
                     
                     if node_name == "supervisor":
-                        st.write("🚦 Git Supervisor checking semantic branches...")
+                        st.write("🚦 Supervisor auditing subject branches...")
                     elif node_name == "researcher":
-                        st.write("📚 Micro-Chunk RAG retrieving study materials...")
+                        st.write("📚 Retrieval pipeline running with Anthropic Contextual Retrieval...")
                     elif node_name == "pedagogue":
-                        st.write("🧠 Pedagogue Tutor generating explanation...")
+                        st.write("🧠 Pedagogical tutor formatting personalized explanation...")
                         tutor_msg = state.get("tutor_response")
                         quiz_msg = state.get("quiz_response")
                     elif node_name == "scribe":
-                        st.write("✍️ Scribe distilling memory into NetworkX DiGraph...")
+                        st.write("✍️ Scribing updates to unified history...")
                     
                     completed.append(node_name)
                 
-                # Final state: all nodes done, END highlighted
                 with graph_placeholder:
                     st.iframe(generate_state_graph_html(active_node="__end__", completed_nodes=completed), height=580)
-                status.update(label="Agentic Pipeline Complete!", state="complete", expanded=False)
-        except OllamaConnectionError as oce:
+                status.update(label="Response Formulated!", state="complete", expanded=False)
+        except OllamaConnectionError:
             st.session_state.ollama_status = "offline"
-            status.update(label="Pipeline Failed: Ollama Connection Error", state="error", expanded=True)
-            st.error("🔌 **Ollama connection failed!**")
-            st.markdown(
-                """
-                It looks like your local Ollama server is offline or is still starting up. 
-                Since this AI Tutor runs **100% offline**, it requires Ollama to be running on your machine.
-                
-                ### How to Fix:
-                1. **Auto-Start:** Click the **🔌 Start Ollama Server** button in the sidebar.
-                2. **Manual Start:** Open a terminal and run `ollama serve`, or open the Ollama Desktop app.
-                3. Check that the `llama3.2` model is pulled by running `ollama pull llama3.2` in your command line.
-                """
-            )
+            status.update(label="Ollama Connection Failure", state="error", expanded=True)
+            st.error("🔌 **Ollama connection failed!** Make sure `ollama serve` is active on port 11434.")
             return
-
             
-        # Display Tutor Response
         if tutor_msg:
             st.chat_message("assistant").write(tutor_msg)
             st.session_state.chat_history.append({"role": "assistant", "content": tutor_msg})
             _mem.add_chat_message("assistant", tutor_msg, st.session_state.active_session_id)
             
-        # Display Quiz if generated
         if quiz_msg:
             import json
             import re
-            
-            # Try to parse the JSON quiz from the LLM response
             try:
-                # The LLM might wrap JSON in markdown code blocks, strip them
                 clean = quiz_msg.strip()
                 clean = re.sub(r'^```json\s*', '', clean)
                 clean = re.sub(r'^```\s*', '', clean)
                 clean = re.sub(r'\s*```$', '', clean)
                 
-                # Find the start of the JSON array in the response
                 start_idx = clean.find('[')
                 if start_idx != -1:
                     clean = clean[start_idx:]
                 
-                # Repair truncated JSON if needed (e.g. missing brackets/braces from Ollama)
                 clean = repair_json_array(clean)
                 questions = json.loads(clean)
                 
@@ -524,43 +569,38 @@ def learn_page():
                         "score": 0,
                         "submitted": False
                     }
-                    status_msg = f"Generated an interactive quiz on **{active_topic}**! Navigate to the **Active Quiz (NEW 🛑)** page in the sidebar menu to start."
+                    status_msg = f"Generated quiz on concept **{active_topic}**! Navigate to the active quiz tab in the sidebar to attempt."
                     st.session_state.chat_history.append({"role": "assistant", "content": status_msg})
                     _mem.add_chat_message("assistant", status_msg, st.session_state.active_session_id)
                     st.rerun()
                 else:
-                    raise ValueError("Empty or invalid question list")
-                    
-            except (json.JSONDecodeError, ValueError, KeyError, IndexError) as e:
-                # Fallback: if JSON parsing fails, show the raw quiz text
+                    raise ValueError("Quiz array empty")
+            except Exception:
                 st.session_state.chat_history.append({"role": "assistant", "content": f"**Quiz:**\n{quiz_msg}"})
                 _mem.add_chat_message("assistant", f"**Quiz:**\n{quiz_msg}", st.session_state.active_session_id)
                 st.rerun()
 
-
 def active_quiz_page():
     st.title("📝 Active Quiz Workspace")
-    st.write("Objective, verified mastery challenges based on your study materials.")
-
-    # Initialize active quiz session state if not exists
+    st.write("Subject quiz challenges based on your ingested study materials.")
+    
     if "active_quiz" not in st.session_state:
         st.session_state.active_quiz = None
 
     if st.session_state.active_quiz:
         aq = st.session_state.active_quiz
-        st.subheader(f"📝 Quiz Challenge: {aq['topic']}")
+        st.subheader(f"📝 Quiz: {aq['topic']}")
         
         with st.form(key=aq["quiz_key"]):
             user_answers = []
             for i, q in enumerate(aq["questions"]):
                 st.markdown(f"**Q{i+1}: {q['question']}**")
                 
-                # Setup index for already submitted choices
                 saved_ans = aq["user_answers"][i] if aq["submitted"] else None
                 saved_idx = q["options"].index(saved_ans) if saved_ans in q["options"] else None
                 
                 answer = st.radio(
-                    f"Select your answer for Q{i+1}:",
+                    f"Select option for Q{i+1}:",
                     options=q["options"],
                     key=f"{aq['quiz_key']}_q{i}",
                     index=saved_idx,
@@ -573,24 +613,20 @@ def active_quiz_page():
             if not aq["submitted"]:
                 submitted = st.form_submit_button("✅ Submit Answers", width="stretch")
                 if submitted:
-                    # Grade the quiz
                     score = 0
                     total = len(aq["questions"])
                     for i, q in enumerate(aq["questions"]):
-                        # Safeguard correct index check to avoid IndexError crashes!
                         correct_idx = q.get("correct", 0)
                         if not isinstance(correct_idx, int) or correct_idx < 0 or correct_idx >= len(q["options"]):
                             correct_idx = 0
-                            
                         correct_answer = q["options"][correct_idx]
                         if user_answers[i] == correct_answer:
                             score += 1
                             
-                    passed = score >= (total * 2 / 3) # e.g. 2/3 passed (66%)
+                    passed = score >= (total * 2 / 3) # e.g. 70% threshold
                     
-                    # Update semantic memory
                     db_mem = UserMemory(st.session_state.user_id)
-                    profile = db_mem.get_semantic_memory()
+                    profile = db_mem.get_semantic_memory(st.session_state.active_subject_id)
                     
                     topic = aq["topic"]
                     comp_list = profile.get("completed_topics", [])
@@ -609,41 +645,37 @@ def active_quiz_page():
                             
                     profile["completed_topics"] = comp_list
                     profile["weak_topics"] = weak_list
-                    db_mem._save_semantic_memory(profile)
+                    db_mem._save_semantic_memory(profile, st.session_state.active_subject_id)
                     
-                    # Record attempt to SQLite quiz_history table
+                    # Record to history with subject_id!
                     db_mem.add_quiz_record(
                         topic=topic,
                         score=score,
                         total=total,
                         passed=passed,
                         questions=aq["questions"],
-                        user_answers=user_answers
+                        user_answers=user_answers,
+                        subject_id=st.session_state.active_subject_id
                     )
                     
-                    # Save results in session state
                     aq["submitted"] = True
                     aq["user_answers"] = user_answers
                     aq["score"] = score
                     aq["passed"] = passed
                     
-                    # Append chat log
                     score_msg = f"Quiz complete on **{topic}**! Score: **{score}/{total}** ({'PASSED' if passed else 'FAILED'})"
                     st.session_state.chat_history.append({"role": "assistant", "content": score_msg})
                     db_mem.add_chat_message("assistant", score_msg, st.session_state.active_session_id)
                     st.rerun()
             else:
-                # Quiz is graded! Display results and explanation feedback
                 score = aq["score"]
                 total = len(aq["questions"])
                 passed = aq["passed"]
                 
                 for i, q in enumerate(aq["questions"]):
-                    # Safeguard correct index check to avoid IndexError crashes!
                     correct_idx = q.get("correct", 0)
                     if not isinstance(correct_idx, int) or correct_idx < 0 or correct_idx >= len(q["options"]):
                         correct_idx = 0
-                        
                     correct_answer = q["options"][correct_idx]
                     explanation = q.get("explanation", "")
                     u_choice = aq["user_answers"][i]
@@ -666,7 +698,7 @@ def active_quiz_page():
                         st.session_state.active_quiz = None
                         st.rerun()
                 else:
-                    st.warning(f"📖 Score too low. **{aq['topic']}** has been flagged as a weak topic to focus on.")
+                    st.warning(f"📖 Flagged as a weak topic to review: **{aq['topic']}**")
                     col1, col2 = st.columns(2)
                     with col1:
                         if st.form_submit_button("🔄 Retake Quiz", width="stretch"):
@@ -683,59 +715,56 @@ def active_quiz_page():
         st.info("💡 **No active quiz challenge.**")
         st.markdown(
             """
-            To start a quiz and verify your mastery:
-            1. Navigate to the **Learn** page in the sidebar.
-            2. Ask the tutor to **quiz you** on a specific topic (e.g., *"quiz me on Image Segmentation"* or *"test me on HDFS"*).
-            3. The tutor will compile your custom challenge, and a notification tag **(NEW 🛑)** will appear on this page in the sidebar.
-            4. Return here to take the interactive test and level up!
+            To take a challenge and verify your mastery:
+            1. Select your target subject in the sidebar.
+            2. Go to the **Learn** Workspace and ask your tutor to **quiz you** (e.g. *"quiz me on image segmentations"*).
+            3. Your challenge will compile and the sidebar will notify you when it's ready.
             """
         )
 
-
-
-
 def graph_page():
-    st.title("🕸️ Concept Knowledge Graph")
-    st.write("Visualize the prerequisites and dependencies of your study topics. Mastered topics are highlighted in Green ✅!")
+    st.title("🕸️ Unified Concept Knowledge Graph")
+    st.write("Prerequisites and concept dependencies across all subjects. Green ✅ = Mastered, Yellow ⚠️ = Weak review topics.")
     
     from pathlib import Path
-    from app.agents.orchestrator import get_kg
+    from app.graph.knowledge_graph import EducationalKnowledgeGraph
     
-    # Retrieve current user's mastered topics
+    # Aggregate completed/weak topics across all subjects
     db_mem = UserMemory(st.session_state.user_id)
-    profile = db_mem.get_semantic_memory()
-    completed = profile.get("completed_topics", [])
+    all_subjects = db_mem.get_subjects()
     
-    # Always regenerate the graph dynamically to highlight newly mastered concepts in green!
-    html_path = get_kg().generate_pyvis_html(completed_topics=completed)
+    overall_completed = []
+    overall_weak = []
+    for s in all_subjects:
+        sem = db_mem.get_semantic_memory(s["subject_id"])
+        overall_completed.extend(sem.get("completed_topics", []))
+        overall_weak.extend(sem.get("weak_topics", []))
         
+    kg = EducationalKnowledgeGraph()
+    html_path = kg.generate_pyvis_html(completed_topics=overall_completed, weak_topics=overall_weak)
+    
     if html_path and os.path.exists(html_path):
         st.iframe(Path(html_path), height=650)
     else:
-        st.info("The Knowledge Graph is currently empty. Ask the Tutor Agent questions about your topics to start building connections!")
+        st.info("Knowledge Graph is currently empty. Upload syllabus curriculum details to get started!")
 
 def agent_architecture_page():
     st.title("🤖 Agentic Architecture")
-    st.write("This shows the LangGraph state machine orchestrating the AI Tutor pipeline.")
-    st.write("Each node represents an agent that processes the student's query sequentially.")
-    
-    # Show the full pipeline with all nodes in idle state
-    graph_html = generate_state_graph_html()
-    st.iframe(graph_html, height=580)
-    
+    st.write("This interactive diagram details the active LangGraph routing state machine.")
+    st.iframe(generate_state_graph_html(), height=580)
     st.markdown("---")
     st.subheader("📋 Node Descriptions")
     st.markdown("""
 | Node | Role |
 |------|------|
-| **🔍 Memory Check** | Loads the student's learning history, preferred style, and past weak topics |
-| **🕸️ Knowledge Graph** | Checks if the query topic has prerequisite concepts the student should know |
-| **📚 RAG Retrieval** | Searches uploaded documents using hybrid Vector + BM25 keyword search |
-| **🧠 Tutor Agent** | Generates a personalized explanation using the LLM with all gathered context |
-| **📝 Quiz Agent** | Creates quiz questions if the student requests them |
+| **🚦 Git Supervisor** | Audits conversational graph branch tips & routes query to Researcher, Chat, or Quiz |
+| **📚 RAG Researcher** | Contextually chunks curriculum details and retrieves relevant content using vector + BM25 hybrid ranking |
+| **🧠 Pedagogue Tutor** | Formulates hyper-personalized detailed lessons tailored to user personalization matrix |
+| **📝 Quiz Assessor** | Generates objective Multiple Choice questions directly derived from RAG contexts |
+| **✍️ Scribe Memory** | Distills state and commits interaction to SQLite and NetworkX long term profiles |
 """)
 
-# Routing
+# Route page
 route_page = page
 if "Active Quiz" in page:
     route_page = "Active Quiz"
@@ -746,7 +775,7 @@ elif route_page == "Learn":
     learn_page()
 elif route_page == "Active Quiz":
     active_quiz_page()
-elif route_page == "Graph Visualization":
+elif route_page == "Concept Knowledge Graph":
     graph_page()
 elif route_page == "Agent Architecture":
     agent_architecture_page()

@@ -1,15 +1,16 @@
 const BASE = '/api'
 
-export async function getSessions() {
-  const r = await fetch(`${BASE}/sessions`)
+export async function getSessions(subjectId = null) {
+  const url = subjectId ? `${BASE}/sessions?subject_id=${subjectId}` : `${BASE}/sessions`
+  const r = await fetch(url)
   return r.json()
 }
 
-export async function createSession(title = 'New Chat Session') {
+export async function createSession(title = 'New Chat Session', subjectId = 'default_subject') {
   const r = await fetch(`${BASE}/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title })
+    body: JSON.stringify({ title, subject_id: subjectId })
   })
   return r.json()
 }
@@ -74,15 +75,25 @@ export async function submitQuiz(data) {
   return r.json()
 }
 
-export async function uploadDocuments(files) {
+export async function uploadDocuments(files, subjectId = 'default_subject') {
   const form = new FormData()
   for (const f of files) form.append('files', f)
+  form.append('subject_id', subjectId)
   const r = await fetch(`${BASE}/documents/upload`, { method: 'POST', body: form })
   return r.json()
 }
 
-export async function ingestDocuments() {
-  const r = await fetch(`${BASE}/documents/ingest`, { method: 'POST' })
+export async function ingestDocuments(data) {
+  const r = await fetch(`${BASE}/documents/ingest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+  return r.json()
+}
+
+export async function getSubjectsProgress() {
+  const r = await fetch(`${BASE}/subjects/progress`)
   return r.json()
 }
 
@@ -126,4 +137,39 @@ export function streamChat(query, sessionId, callbacks) {
   })
 
   return () => controller.abort()
+}
+
+export async function getSubjects() {
+  const r = await fetch(`${BASE}/subjects`)
+  return r.json()
+}
+
+export async function createSubject(subjectId, subjectName) {
+  const r = await fetch(`${BASE}/subjects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subject_id: subjectId, subject_name: subjectName })
+  })
+  return r.json()
+}
+
+export async function deleteSubject(subjectId) {
+  const r = await fetch(`${BASE}/subjects/${subjectId}`, { method: 'DELETE' })
+  return r.json()
+}
+
+export async function getSubjectStudyState(subjectId) {
+  const r = await fetch(`${BASE}/subjects/${subjectId}/study_state`)
+  return r.json()
+}
+
+export async function advanceSubjectStudyState(subjectId) {
+  const r = await fetch(`${BASE}/subjects/${subjectId}/advance`, { method: 'POST' })
+  return r.json()
+}
+
+export async function triggerExplanation(subjectId, sessionId = null) {
+  const params = sessionId ? `?session_id=${sessionId}` : ''
+  const r = await fetch(`${BASE}/subjects/${subjectId}/explain${params}`, { method: 'POST' })
+  return r.json()
 }

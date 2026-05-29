@@ -9,7 +9,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.utils.config import VECTOR_DB_DIR, EMBEDDING_MODEL, BASE_DIR
 
-# Log file path -- all retrieved text is saved here for inspection
+# Log file path for retrieval inspection
 RETRIEVAL_LOG = os.path.join(BASE_DIR, "retrieval_log.txt")
 
 class HybridRAGRetriever:
@@ -24,24 +24,32 @@ class HybridRAGRetriever:
             self.embed_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
         # 2. Connect to existing ChromaDB
+        os.makedirs(VECTOR_DB_DIR, exist_ok=True)
         self.db = chromadb.PersistentClient(path=VECTOR_DB_DIR)
+
+    def get_retriever(self, subject_id: str = "default_subject", num_chunks=2, constraints=None):
+        """Builds a Subject-Specific Hybrid Retriever combining Vector Search and BM25 using LangChain."""
+        collection_name = f"subject_{subject_id}"
         
-        # 3. LangChain Vector Store
-        self.vector_store = Chroma(
+        # Connect to Chroma Vector Store
+        vector_store = Chroma(
             client=self.db,
-            collection_name="course_materials",
+            collection_name=collection_name,
             embedding_function=self.embed_model
         )
-
-    def get_retriever(self, num_chunks=2, constraints=None):
-        """Builds a Hybrid Retriever combining Vector Search and BM25 using LangChain."""
+        
         search_kwargs = {"k": num_chunks}
         if constraints and isinstance(constraints, dict) and len(constraints) > 0:
-            search_kwargs["filter"] = constraints
-        vector_retriever = self.vector_store.as_retriever(search_kwargs=search_kwargs)
+            if len(constraints) == 1:
+                search_kwargs["filter"] = constraints
+            else:
+                search_kwargs["filter"] = {
+                    "$and": [{k: v} for k, v in constraints.items()]
+                }
+        vector_retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
         
         try:
-            collection = self.db.get_or_create_collection("course_materials")
+            collection = self.db.get_or_create_collection(collection_name)
             chroma_data = collection.get()
             
             if chroma_data and "documents" in chroma_data and chroma_data["documents"]:
@@ -52,9 +60,9 @@ class HybridRAGRetriever:
                 bm25_retriever = BM25Retriever.from_texts(texts=documents, metadatas=metadatas)
                 bm25_retriever.k = num_chunks
                 
-                print(f"  [OK] BM25 initialized with {len(documents)} nodes")
+                print(f"  [OK] BM25 initialized with {len(documents)} nodes in subject '{subject_id}'")
                 
-                # Combine using Manual Reciprocal Rank Fusion since Langchain versions conflict
+                # RRF Ensemble Retriever
                 class ManualEnsembleRetriever:
                     def __init__(self, retrievers, weights=None, k=60):
                         self.retrievers = retrievers
@@ -80,24 +88,37 @@ class HybridRAGRetriever:
                 self._retriever_mode = "hybrid"
                 return ensemble_retriever
             else:
-                raise ValueError("No documents found in ChromaDB collection.")
+                raise ValueError(f"No documents found in Chroma collection '{collection_name}'")
                 
         except Exception as e:
-            print(f"  [WARN] BM25 setup failed. Full error below:")
-            traceback.print_exc()
+            print(f"  [WARN] BM25 setup failed for subject '{subject_id}'. Vector search fallback. Error: {e}")
             self._retriever_mode = "vector_only"
             return vector_retriever
 
-    def retrieve(self, query: str, constraints=None):
-        """Retrieves relevant chunks and saves them to retrieval_log.txt for inspection."""
-        retriever = self.get_retriever(num_chunks=2, constraints=constraints)
+    def retrieve(self, query: str, subject_id: str = "default_subject", constraints=None):
+        """Retrieves context chunks from subject collection and logs them with strict metadata filtering."""
+        retriever = self.get_retriever(subject_id=subject_id, num_chunks=4, constraints=constraints)
         docs = retriever.invoke(query)
         
         mode = getattr(self, '_retriever_mode', 'unknown')
-        print(f"  [INFO] Retrieval Mode: {mode.upper()}")
-        print(f"  [INFO] Chunks Retrieved: {len(docs)}")
+        print(f"  [INFO] Subject: {subject_id} | Retrieval Mode: {mode.upper()} | Raw Chunks: {len(docs)}")
         
-        # Deduplicate docs (EnsembleRetriever might return duplicates depending on how it merges)
+        # Strict manual metadata filtering safeguard
+        if constraints and isinstance(constraints, dict):
+            target_doc_id = constraints.get("doc_id")
+            target_part_index = constraints.get("part_index")
+            filtered_docs = []
+            for doc in docs:
+                meta = doc.metadata or {}
+                if target_doc_id and meta.get("doc_id") != target_doc_id:
+                    continue
+                if target_part_index is not None and meta.get("part_index") != target_part_index:
+                    continue
+                filtered_docs.append(doc)
+            docs = filtered_docs
+            print(f"  [FILTER] Strictly filtered chunks: {len(docs)} matching doc='{target_doc_id}', part={target_part_index}")
+        
+        # Deduplicate docs
         seen = set()
         unique_docs = []
         for d in docs:
@@ -105,11 +126,12 @@ class HybridRAGRetriever:
                 seen.add(d.page_content)
                 unique_docs.append(d)
                 
-        # Write everything to a log file
+        # Write to retrieval log
         try:
             with open(RETRIEVAL_LOG, "a", encoding="utf-8") as f:
                 f.write("========================================================\n")
                 f.write(f"TIMESTAMP: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"SUBJECT: {subject_id}\n")
                 f.write(f"QUERY: {query}\n")
                 f.write(f"MODE: {mode.upper()}\n")
                 f.write("--------------------------------------------------------\n")
@@ -125,7 +147,7 @@ class HybridRAGRetriever:
         return unique_docs
 
 def get_retriever():
-    """Singleton pattern to prevent loading models multiple times."""
+    """Singleton pattern to prevent loading embedding models multiple times."""
     global _retriever_instance
     if '_retriever_instance' not in globals():
         _retriever_instance = HybridRAGRetriever()

@@ -1,0 +1,8 @@
+# Chapter 1: Modern Software Architectural Patterns
+Software architecture defines the structural blueprint of a software system. Traditional architectures rely on Monolith structures, where all services, logic, and databases are packaged into a single codebase. While simple to deploy, monoliths become difficult to scale and maintain as they grow. Microservices architecture solves this by breaking the application down into small, loosely coupled services that communicate over APIs, allowing individual teams to develop, deploy, and scale services independently.
+
+# Chapter 2: Agile Methodologies and Project Management
+Agile is an iterative approach to software development and project management that helps teams deliver value to customers faster and with fewer headaches. Instead of a single massive release, Agile breaks work into small, digestible increments. Scrum is a popular Agile framework where work is structured into fixed-duration cycles called Sprints (usually 2-4 weeks). Teams hold daily stand-up meetings to sync progress, and conclude sprints with Sprint Reviews and Retrospectives to continuously inspect and adapt processes.
+
+# Chapter 3: Continuous Integration and Deployment Pipelines
+Continuous Integration and Continuous Deployment (CI/CD) represents a set of operating principles and practices that enable software development teams to deliver code changes more frequently and reliably. Continuous Integration (CI) automatedly builds and tests code commits, preventing integration conflicts. Continuous Deployment (CD) automatically pushes validated changes from the main code repository straight to production environments, dramatically shortening release cycles and reducing manual errors.

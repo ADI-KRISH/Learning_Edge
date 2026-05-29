@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { submitQuiz } from '../api.js'
 
-export default function QuizPage({ quiz, sessionId, onDismiss }) {
+export default function QuizPage({ quiz, sessionId, onDismiss, onQuizPassed }) {
   const [answers, setAnswers] = useState({})
   const [result, setResult] = useState(null)   // { score, total, passed }
   const [submitting, setSubmitting] = useState(false)
@@ -18,6 +18,10 @@ export default function QuizPage({ quiz, sessionId, onDismiss }) {
     })
     setResult(res)
     setSubmitting(false)
+    // If the quiz was passed, notify the parent so it can navigate to chat + refresh
+    if (res.passed) {
+      onQuizPassed?.()
+    }
   }
 
   const handleRetake = () => {

@@ -4,470 +4,133 @@
     "graph": {},
     "nodes": [
         {
-            "id": "Image Segmentation"
+            "subject_id": "nlp_101",
+            "id": "Transformers"
         },
         {
-            "id": "Computer Vision"
+            "subject_id": "nlp_101",
+            "id": "Attention"
         },
         {
-            "id": "Digital Image Processing"
-        },
-        {
-            "id": "Semantic Segmentation"
-        },
-        {
-            "id": "Deep Learning"
-        },
-        {
-            "id": "Instance Segmentation"
-        },
-        {
-            "id": "Object Detection"
-        },
-        {
-            "id": "Feature Extraction"
-        },
-        {
-            "id": "Local Descriptors"
-        },
-        {
-            "id": "SIFT & SURF"
-        },
-        {
-            "id": "Camera Calibration"
-        },
-        {
-            "id": "Linear Algebra"
-        },
-        {
-            "id": "Optics"
-        },
-        {
-            "id": "Pose Estimation"
-        },
-        {
-            "id": "3D Geometry"
-        },
-        {
-            "id": "Bounding Boxes"
-        },
-        {
-            "id": "Hadoop"
-        },
-        {
-            "id": "Java"
-        },
-        {
-            "id": "Distributed Systems"
-        },
-        {
-            "id": "HDFS"
-        },
-        {
-            "id": "Storage Systems"
-        },
-        {
-            "id": "MapReduce"
-        },
-        {
-            "id": "Parallel Programming"
-        },
-        {
-            "id": "Mapreduce And Hdfs"
-        },
-        {
-            "id": "The Following Concepts Are Necessary To Understand And Appreciate The Concepts In The Given Text Excrescpt"
-        },
-        {
-            "id": "Region Growing"
-        },
-        {
-            "id": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "id": "Similarity Metric (E.G."
-        },
-        {
-            "id": "Mean"
-        },
-        {
-            "id": "Stdev)"
-        },
-        {
-            "id": "Region Growing Algorithm (E.G."
-        },
-        {
-            "id": "Hierarchical Clustering"
-        },
-        {
-            "id": "K-Means"
-        },
-        {
-            "id": "Hdbscan)"
-        },
-        {
-            "id": "Segmentation Techniques (E.G."
-        },
-        {
-            "id": "Random Forests"
-        },
-        {
-            "id": "Support Vector Machines"
-        },
-        {
-            "id": "Neural Networks)"
-        },
-        {
-            "id": "RAG"
-        },
-        {
-            "id": "Large Language Models"
-        },
-        {
-            "id": "Information Retrieval"
-        },
-        {
-            "id": "Vectorless RAG"
-        },
-        {
-            "id": "Knowledge Graphs"
-        },
-        {
-            "id": "Lexical Search"
-        },
-        {
-            "id": "Quantum Computing And Quantum Interference"
-        },
-        {
-            "id": "Superposition"
-        },
-        {
-            "id": "Entanglement"
-        },
-        {
-            "id": "And Quantum Interference"
-        },
-        {
+            "subject_id": "nlp_101",
             "id": "Neural Networks"
         },
         {
-            "id": "Machine Learning"
+            "subject_id": "math_101",
+            "id": "Calculus"
         },
         {
-            "id": "Photosynthesis"
+            "subject_id": "math_101",
+            "id": "Algebra"
         },
         {
-            "id": "Biology"
+            "subject_id": "test_subject",
+            "id": "Mitochondrial Function And Energy Production (Topic Name)"
         },
         {
-            "id": "Cellular Energy"
+            "subject_id": "test_subject",
+            "id": "1. The Mitochondrion Is The Primary Site Of Atp Synthesis In Eukaryotic Cells. 2. Mitochondria Contain Complex Machinery That Enables Them To Produce More Atp Than They Consume Through Oxidative Phosphorylation (Oxphos). 3. Oxphos Involves The Importation Of Amino Acids Into The Mitochondrial Matrix"
         },
         {
-            "id": "Chloroplasts"
+            "subject_id": "test_subject",
+            "id": "Which Is Then Converted To Succinate By The Citric Acid Cycle (Acc) For Release As Atp."
         },
         {
-            "id": "Quantum Computing"
+            "subject_id": "eval_style_101",
+            "id": "Chapter 1: Introduction to Mechanics"
         },
         {
-            "id": "Physics"
+            "subject_id": "eval_style_101",
+            "id": "Chapter 2: Electromagnetism Basics"
         },
         {
-            "id": "Qubits"
+            "subject_id": "eval_style_101",
+            "id": "Chapter 3: Quantum Foundations"
         },
         {
-            "id": "Segmentation"
+            "subject_id": "nlp_101",
+            "id": "Chapter 1: Foundations of Natural Language Processing"
         },
         {
-            "id": "Light-Dependent Reactions"
+            "subject_id": "nlp_101",
+            "id": "Chapter 2: Text Representation and Vector Space Models"
         },
         {
-            "id": "Photoelectric Effect (Electrons Leaving The Thylakoid Membrane)"
+            "subject_id": "nlp_101",
+            "id": "Chapter 3: Large Language Models and Transformers"
         },
         {
-            "id": "Electron Transport Chain (Moving Electrons Through A Series Of Redox Reactions)"
+            "subject_id": "nlp_101",
+            "id": "quiz_me"
         },
         {
-            "id": "O2 (Releasing Oxygen From The Atmosphere)"
+            "subject_id": "se_101",
+            "id": "Chapter 1: Modern Software Architectural Patterns"
         },
         {
-            "id": "Mapreduce"
+            "subject_id": "se_101",
+            "id": "Chapter 2: Agile Methodologies and Project Management"
+        },
+        {
+            "subject_id": "se_101",
+            "id": "Chapter 3: Continuous Integration and Deployment Pipelines"
         }
     ],
     "edges": [
         {
             "relation": "requires",
-            "source": "Image Segmentation",
-            "target": "Semantic Segmentation"
-        },
-        {
-            "relation": "requires",
-            "source": "Image Segmentation",
-            "target": "Instance Segmentation"
-        },
-        {
-            "relation": "requires",
-            "source": "Image Segmentation",
-            "target": "Object Detection"
-        },
-        {
-            "relation": "requires",
-            "source": "Computer Vision",
-            "target": "Image Segmentation"
-        },
-        {
-            "relation": "requires",
-            "source": "Digital Image Processing",
-            "target": "Image Segmentation"
-        },
-        {
-            "relation": "requires",
-            "source": "Digital Image Processing",
-            "target": "Feature Extraction"
-        },
-        {
-            "relation": "requires",
-            "source": "Deep Learning",
-            "target": "Semantic Segmentation"
-        },
-        {
-            "relation": "requires",
-            "source": "Deep Learning",
-            "target": "Object Detection"
-        },
-        {
-            "relation": "requires",
-            "source": "Object Detection",
-            "target": "Instance Segmentation"
-        },
-        {
-            "relation": "requires",
-            "source": "Object Detection",
-            "target": "Bounding Boxes"
-        },
-        {
-            "relation": "requires",
-            "source": "Feature Extraction",
-            "target": "Local Descriptors"
-        },
-        {
-            "relation": "requires",
-            "source": "Local Descriptors",
-            "target": "SIFT & SURF"
-        },
-        {
-            "relation": "requires",
-            "source": "Camera Calibration",
-            "target": "Pose Estimation"
-        },
-        {
-            "relation": "requires",
-            "source": "Linear Algebra",
-            "target": "Camera Calibration"
-        },
-        {
-            "relation": "requires",
-            "source": "Linear Algebra",
-            "target": "Neural Networks"
-        },
-        {
-            "relation": "requires",
-            "source": "Linear Algebra",
-            "target": "Quantum Computing"
-        },
-        {
-            "relation": "requires",
-            "source": "Optics",
-            "target": "Camera Calibration"
-        },
-        {
-            "relation": "requires",
-            "source": "3D Geometry",
-            "target": "Pose Estimation"
-        },
-        {
-            "relation": "requires",
-            "source": "Hadoop",
-            "target": "HDFS"
-        },
-        {
-            "relation": "requires",
-            "source": "Hadoop",
-            "target": "MapReduce"
-        },
-        {
-            "relation": "requires",
-            "source": "Java",
-            "target": "Hadoop"
-        },
-        {
-            "relation": "requires",
-            "source": "Distributed Systems",
-            "target": "Hadoop"
-        },
-        {
-            "relation": "requires",
-            "source": "Storage Systems",
-            "target": "HDFS"
-        },
-        {
-            "relation": "requires",
-            "source": "Parallel Programming",
-            "target": "MapReduce"
-        },
-        {
-            "relation": "requires",
-            "source": "The Following Concepts Are Necessary To Understand And Appreciate The Concepts In The Given Text Excrescpt",
-            "target": "Mapreduce And Hdfs"
-        },
-        {
-            "relation": "requires",
-            "source": "Similarity Metric (E.G.",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Mean",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Stdev)",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Region Growing Algorithm (E.G.",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Hierarchical Clustering",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "K-Means",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Hdbscan)",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Segmentation Techniques (E.G.",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Random Forests",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Support Vector Machines",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "Neural Networks)",
-            "target": "Regularized Graph Cuts (Rgc)"
-        },
-        {
-            "relation": "requires",
-            "source": "RAG",
-            "target": "Vectorless RAG"
-        },
-        {
-            "relation": "requires",
-            "source": "Large Language Models",
-            "target": "RAG"
-        },
-        {
-            "relation": "requires",
-            "source": "Information Retrieval",
-            "target": "RAG"
-        },
-        {
-            "relation": "requires",
-            "source": "Knowledge Graphs",
-            "target": "Vectorless RAG"
-        },
-        {
-            "relation": "requires",
-            "source": "Lexical Search",
-            "target": "Vectorless RAG"
-        },
-        {
-            "relation": "requires",
-            "source": "Superposition",
-            "target": "Quantum Computing And Quantum Interference"
-        },
-        {
-            "relation": "requires",
-            "source": "Entanglement",
-            "target": "Quantum Computing And Quantum Interference"
-        },
-        {
-            "relation": "requires",
-            "source": "And Quantum Interference",
-            "target": "Quantum Computing And Quantum Interference"
+            "source": "Attention",
+            "target": "Transformers"
         },
         {
             "relation": "requires",
             "source": "Neural Networks",
-            "target": "Deep Learning"
+            "target": "Attention"
         },
         {
             "relation": "requires",
-            "source": "Machine Learning",
-            "target": "Neural Networks"
+            "source": "Algebra",
+            "target": "Calculus"
         },
         {
             "relation": "requires",
-            "source": "Photosynthesis",
-            "target": "Chloroplasts"
+            "source": "1. The Mitochondrion Is The Primary Site Of Atp Synthesis In Eukaryotic Cells. 2. Mitochondria Contain Complex Machinery That Enables Them To Produce More Atp Than They Consume Through Oxidative Phosphorylation (Oxphos). 3. Oxphos Involves The Importation Of Amino Acids Into The Mitochondrial Matrix",
+            "target": "Mitochondrial Function And Energy Production (Topic Name)"
         },
         {
             "relation": "requires",
-            "source": "Biology",
-            "target": "Photosynthesis"
+            "source": "Which Is Then Converted To Succinate By The Citric Acid Cycle (Acc) For Release As Atp.",
+            "target": "Mitochondrial Function And Energy Production (Topic Name)"
         },
         {
             "relation": "requires",
-            "source": "Cellular Energy",
-            "target": "Photosynthesis"
+            "source": "Chapter 1: Introduction to Mechanics",
+            "target": "Chapter 2: Electromagnetism Basics"
         },
         {
             "relation": "requires",
-            "source": "Quantum Computing",
-            "target": "Qubits"
+            "source": "Chapter 2: Electromagnetism Basics",
+            "target": "Chapter 3: Quantum Foundations"
         },
         {
             "relation": "requires",
-            "source": "Quantum Computing",
-            "target": "Entanglement"
+            "source": "Chapter 1: Foundations of Natural Language Processing",
+            "target": "Chapter 2: Text Representation and Vector Space Models"
         },
         {
             "relation": "requires",
-            "source": "Physics",
-            "target": "Quantum Computing"
+            "source": "Chapter 2: Text Representation and Vector Space Models",
+            "target": "Chapter 3: Large Language Models and Transformers"
         },
         {
             "relation": "requires",
-            "source": "Photoelectric Effect (Electrons Leaving The Thylakoid Membrane)",
-            "target": "Light-Dependent Reactions"
+            "source": "Chapter 1: Modern Software Architectural Patterns",
+            "target": "Chapter 2: Agile Methodologies and Project Management"
         },
         {
             "relation": "requires",
-            "source": "Electron Transport Chain (Moving Electrons Through A Series Of Redox Reactions)",
-            "target": "Light-Dependent Reactions"
-        },
-        {
-            "relation": "requires",
-            "source": "O2 (Releasing Oxygen From The Atmosphere)",
-            "target": "Light-Dependent Reactions"
+            "source": "Chapter 2: Agile Methodologies and Project Management",
+            "target": "Chapter 3: Continuous Integration and Deployment Pipelines"
         }
     ]
 }
