@@ -280,10 +280,18 @@ Output ONLY minified JSON format:
     # Heuristic override for obvious explanation requests that got misrouted
     query_clean = user_input.lower().strip()
     quiz_keywords = ["quiz", "test", "assess", "assessment", "examine", "exam", "question me", "questions on", "evaluate me", "grade me", "quizzes", "practice questions", "trivia", "retake"]
-    if any(w in query_clean for w in quiz_keywords):
+    explanation_keywords = ["what", "how", "why", "explain", "tell", "can you", "elaborate", "example", "give me", "show me", "describe", "define", "difference", "compare", "summarize"]
+    has_quiz_keyword = any(w in query_clean for w in quiz_keywords)
+    has_explanation_keyword = any(w in query_clean for w in explanation_keywords)
+    
+    if has_quiz_keyword:
         print("  [WARN] Heuristic override: query looks like a quiz request. Forcing ASSESS.")
         next_action = "assess"
-    elif next_action == "chat" and (len(query_clean.split()) > 4 or any(w in query_clean for w in ["what", "how", "why", "explain", "tell", "can you", "elaborate"])):
+    elif next_action == "assess" and not has_quiz_keyword:
+        # LLM misrouted an explanation as a quiz — rescue it
+        print("  [WARN] Heuristic override: LLM returned 'assess' but no quiz keywords found. Forcing RESEARCH.")
+        next_action = "research"
+    elif next_action == "chat" and (len(query_clean.split()) > 4 or has_explanation_keyword):
         print("  [WARN] Heuristic override: query looks like a question/explanation request. Forcing RESEARCH.")
         next_action = "research"
 
@@ -691,14 +699,26 @@ def scribe_node(state: TutorState) -> TutorState:
         # Fallback distilled state
         distilled_data = {"q": user_input[:40], "status": "active"}
         
-    # 2. Generate clean topic label
+    # 2. Generate clean topic label — use part_title for quizzes, user input for conversation
     topic_label = "General"
-    words = user_input.strip().split()
-    if words:
-        # Extract a clean topic label
-        raw_label = "_".join(words[:2]).strip('?.!,:;()')
-        if raw_label:
-            topic_label = raw_label
+    if next_action == "assess":
+        # For quiz, get the actual active part title as the topic — much cleaner than "quiz_me"
+        try:
+            mem_scribe = UserMemory(user_id=state.get("user_id", "default_user"))
+            scribe_subject = state.get("subject_id", "default_subject")
+            scribe_study = mem_scribe.get_active_study_state(scribe_subject)
+            scribe_doc_id = scribe_study.get("active_doc_id")
+            scribe_part_idx = scribe_study.get("active_part_index", 1)
+            scribe_part = mem_scribe.get_document_part(scribe_doc_id, scribe_part_idx) if scribe_doc_id else None
+            topic_label = scribe_part.get("part_title", "Current Chapter") if scribe_part else "Current Chapter"
+        except Exception:
+            topic_label = "Current Chapter"
+    else:
+        words = user_input.strip().split()
+        if words:
+            raw_label = "_".join(words[:2]).strip('?.!,:;()')
+            if raw_label:
+                topic_label = raw_label
             
     # 3. Save attributes to current HEAD node in NetworkX
     if head_pointer in graph_memory:
